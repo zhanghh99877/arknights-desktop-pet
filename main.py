@@ -9,8 +9,13 @@ import time
 from datetime import datetime
 
 # 必须在 QtWebEngine 初始化前设置：允许视频无手势自动播放
+# 反节流三件套：工作区导出按真实时间逐帧抓 rAF，窗口失焦/被遮挡时
+# Chromium 会把 rAF 节流到 ~1fps，导出会慢几十倍
 os.environ.setdefault(
-    "QTWEBENGINE_CHROMIUM_FLAGS", "--autoplay-policy=no-user-gesture-required --allow-file-access-from-files"
+    "QTWEBENGINE_CHROMIUM_FLAGS",
+    "--autoplay-policy=no-user-gesture-required --allow-file-access-from-files"
+    " --disable-background-timer-throttling --disable-renderer-backgrounding"
+    " --disable-backgrounding-occluded-windows",
 )
 
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap

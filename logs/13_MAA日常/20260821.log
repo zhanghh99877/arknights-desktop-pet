@@ -1,0 +1,37 @@
+
+===== 2026-08-21 10:00:07 开始运行 =====
+[10:00:08] 启动明日方舟 ...
+[10:00:28] 游戏窗口已出现，等待 15s 加载
+[10:00:43] 启动 MAA ...
+[10:00:55] [MAA] Timer wait time: 10
+[10:01:07] [MAA] Timer canceled: false
+[10:01:07] [MAA] GetFightStage: from ["TO-8"], selected TO-8
+[10:01:07] [MAA] Start Task Chain: StartUp, Task ID: 1
+[10:02:25] [MAA] 完成任务: 开始唤醒
+[10:02:25] [MAA] Completed Task Chain: StartUp, Task ID: 1
+[10:02:25] [MAA] Start Task Chain: Fight, Task ID: 2
+[10:03:07] [MAA] 开始行动 1~6 次, -126理智
+[10:05:46] [MAA] TO-8 掉落统计:
+[10:05:46] [MAA] Depot updated from stage drops, 3 items processed
+[10:06:13] [MAA] 完成任务: 理智作战
+[10:06:13] [MAA] Completed Task Chain: Fight, Task ID: 2
+[10:06:13] [MAA] Start Task Chain: Infrast, Task ID: 3
+[10:06:58] [MAA] 当前设施: 制造站 01
+[10:07:10] [MAA] 当前设施: 制造站 01
+[10:07:22] [MAA] 当前设施: 制造站 02
+[10:07:25] [MAA] 当前设施: 制造站 03
+[10:07:31] [MAA] 当前设施: 制造站 04
+[10:07:52] [MAA] 任务出错: 基建换班
+[10:07:52] [MAA] Start Task Chain: Recruit, Task ID: 4
+[10:08:34] [MAA] 识别错误, 已返回
+[10:08:37] [MAA] 识别错误, 已返回
+[10:08:43] [MAA] 识别错误, 已返回
+[10:08:46] [MAA] 出现错误, 已返回
+[10:08:46] [MAA] 任务出错: 自动公招
+[10:08:46] [MAA] Start Task Chain: Mall, Task ID: 5
+[10:09:22] [MAA] Stopping: false to true (called from Stop)
+[10:09:22] [MAA] 正在停止……
+[10:09:22] [MAA] 已停止
+[10:09:22] [MAA] Stopping: true to false (called from SetStopped)
+[10:09:25] MAA 已退出 (code=0)，任务未全部完成
+===== 10:09:25 结束，状态 failed =====

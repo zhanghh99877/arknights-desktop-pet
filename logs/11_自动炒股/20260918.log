@@ -1,0 +1,13 @@
+
+===== 2026-09-18 10:10:35 开始运行 =====
+[strategy] 10:10:40 自动策略执行 | 2026-09-18 10:10:40
+[strategy] 10:10:40 [1/5] 查询持仓...
+[strategy] 10:10:41 [ERROR] API请求失败 /api/claw/mockTrading/positions: HTTPSConnectionPool(host='mkapi2.dfcfs.com', port=443): Max retries exceeded with url: /finskillshub/api/claw/mockTrading/positions (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self signed certificate (_ssl.c:992)')))
+[strategy] 10:10:41 当前无持仓,跳过清仓
+[strategy] 10:10:41 [2/5] 选股(趋势热度龙头)...
+[strategy] 10:10:42 [ERROR] 选股失败: 错误[strategy] 10:10:42 [ERROR] 选股失败: 错误: HTTPSConnectionPool(host='mkapi2.dfcfs.com', port=443): Max retries exceeded with url: /finskillshub/api/claw/stock-screen (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY
+[strateg[strategy] 10:10:42 [ERROR] 放宽条件后仍失败: 错误: HTTPSConnectionPool(host='mkapi2.dfcfs.com', port=443): Max retries exceeded with url: /finskillshub/api/claw/stock-screen (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY
+[strategy] 10:10:42 [ERROR] 选股失败,策略终止
+gy] 10:10:42 [ERROR] 选股失败,策略终止
+===== 10:10:42 结束，状态 failed =====
+===== 10:10:42 结束，状态 failed =====

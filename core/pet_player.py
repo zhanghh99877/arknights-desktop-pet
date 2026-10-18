@@ -25,6 +25,89 @@ VENDOR = PRTS_ROOT / "Spine" / "vendor" / "spine-player"
 # 切换动作时的交叉淡化时长（秒），0 = 硬切
 _MIX_SECONDS = 0.2
 
+# 自创程序动作运行时（Spine/proc/<模型>/*.js 注册 window.PROCS[name]）。
+# 只在使用 procs 加载页面时注入。
+_PROCS_RUNTIME_JS = """
+<script>
+/* 自创程序动作运行时：官方 apply() 之后叠加姿势（见 _PROC_HOOK_JS）。
+ * 动作文件契约：window.PROCS[动作名] = {base: 打底官方动作, pose(sk, t, fx)}；
+ * pose 每帧被调（t 秒，从切换起算），fx(id, bone, dxPx, dyPx, opacity, emoji)
+ * 把 emoji 贴到骨骼屏幕位置。 */
+window.PROCS = window.PROCS || {};
+window.__procName = null;
+window.__procT = 0;
+window.__fxIds = [];
+
+/* 切换程序动作；name 为空 = 关闭程序层（保留当前官方动作）。
+ * 切换时 setToSetupPose：官方动画每帧会重写带关键帧的骨骼，复位到
+ * setup 姿势只清掉程序层留在无关键帧骨骼上的残留（如 scaleY 压扁）。 */
+window.setProc = function(name) {
+  name = name || null;
+  if (name === window.__procName) return;
+  window.__procName = name;
+  window.__procT = 0;
+  window.__clearFx();
+  var p = window.player;
+  if (!p || !p.loaded) return;
+  try { p.skeleton.setToSetupPose(); } catch (e) {}
+  if (!name) return;
+  var def = window.PROCS[name];
+  if (def && def.base) {
+    try {
+      if (p.skeleton.data.findAnimation(def.base))
+        p.animationState.setAnimation(0, def.base, true);
+    } catch (e) {}
+  }
+};
+
+/* 特效叠加层：骨世界坐标 + 像素偏移 → 屏幕定位（与取景框同一映射），
+ * opacity<=0 隐藏。元素挂在 #player（position:relative）内。 */
+window.procFx = function(id, bone, dxPx, dyPx, opacity, emoji) {
+  var el = document.getElementById(id);
+  if (opacity <= 0) { if (el) el.style.display = 'none'; return; }
+  var p = window.player;
+  if (!p || !p.currentViewport || !bone) return;
+  if (!el) {
+    el = document.createElement('div');
+    el.id = id;
+    el.style.cssText = 'position:absolute;font-size:26px;pointer-events:none;display:none;z-index:5;';
+    var host = document.getElementById('player') || document.body;
+    host.appendChild(el);
+    window.__fxIds.push(id);
+  }
+  var vp = p.currentViewport, host = el.parentElement;
+  var W = host.clientWidth, H = host.clientHeight;
+  if (!W || !H) return;
+  el.textContent = emoji;
+  el.style.left = ((bone.worldX - vp.x) / vp.width * W + dxPx) + 'px';
+  el.style.top = (H - (bone.worldY - vp.y) / vp.height * H + dyPx) + 'px';
+  el.style.opacity = opacity;
+  el.style.display = 'block';
+};
+
+window.__clearFx = function() {
+  (window.__fxIds || []).forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.remove();
+  });
+  window.__fxIds = [];
+};
+</script>"""
+
+# success 钩子：monkey-patch apply，官方姿势算完后叠加程序层。
+# 单独占位注入（procs 为空时页面完全不受影响）。
+_PROC_HOOK_JS = """
+        // 程序动作钩子：apply() 之后叠加自创姿势
+        var _origApply = player.animationState.apply.bind(player.animationState);
+        player.animationState.apply = function(sk) {
+          _origApply(sk);
+          var name = window.__procName;
+          if (name && window.PROCS && window.PROCS[name]) {
+            window.__procT += 1 / 60;
+            try { window.PROCS[name].pose(sk, window.__procT, window.procFx); } catch (e) {}
+          }
+        };"""
+
 # 交互桥：JS 鼠标/动画事件 → Qt 信号
 _BRIDGE_JS = """
 <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
@@ -110,7 +193,7 @@ _SPINE_HTML = """<!DOCTYPE html>
   <link rel="stylesheet" href="{vendor}/spine-player.css">
   <style>
     html, body {{ margin: 0; padding: 0; background: {bg}; overflow: hidden; }}
-    #player {{ width: 100vw; height: 100vh; }}
+    #player {{ width: 100vw; height: 100vh; position: relative; }}
     .spine-player {{ background: transparent !important; }}
   </style>
 </head>
@@ -184,13 +267,29 @@ _SPINE_HTML = """<!DOCTYPE html>
           vp.width *= k;
           vp.height *= k;
         }}
+        {proc_hook}
       }},
     }});
   </script>
+  {proc_scripts}
   {mask}
   {bridge}
 </body>
 </html>"""
+
+
+def _build_proc_scripts(procs: dict | None) -> str:
+    """程序动作注入块：运行时 + 每个动作一个 <script>（源码原样内联）。
+
+    源码里可能出现的 </script> 转义为 <\\/script，防止提前闭合标签。
+    """
+    if not procs:
+        return ""
+    blocks = [_PROCS_RUNTIME_JS]
+    for name, src in procs.items():
+        src = src.replace("</script", "<\\/script")
+        blocks.append(f"<script>\n/* proc: {name} */\n{src}\n</script>")
+    return "\n".join(blocks)
 
 
 class PetBridge(QObject):
@@ -268,7 +367,8 @@ class PetPlayer(QWebEngineView):
 
     def play_spine(self, skel: Path, atlas: Path, animation: str = "",
                    loop: bool = True, fit: str = "", view_scale: float = 1.0,
-                   fit_all: list = (), viewport: dict | None = None):
+                   fit_all: list = (), viewport: dict | None = None,
+                   procs: dict | None = None):
         """整套加载 spine 骨架（切模型时用）。
 
         animation 为首个播放的骨架内动画名；fit 为取景参照动作
@@ -279,6 +379,8 @@ class PetPlayer(QWebEngineView):
         viewport：缓存的并集取景框（由 viewportComputed 信号回传后落库），
         传入则跳过采样直接套用。
         view_scale 为显示缩放：0.5 = 动画显示为取景框的一半大小（预览用）。
+        procs：自创程序动作 {动作名: JS 源码}（Spine/proc/<模型>/ 下的
+        .js 文件内容），注入后可用 set_proc() 在官方动作之上叠加播放。
         """
         import json
         self._set_bg()
@@ -291,16 +393,29 @@ class PetPlayer(QWebEngineView):
                 view_scale=view_scale,
                 fit_all=json.dumps(list(fit_all)),
                 cached_vp=json.dumps(viewport) if viewport else 'null',
-                mix=_MIX_SECONDS, mask=_MASK_JS, bridge=_BRIDGE_JS),
+                mix=_MIX_SECONDS, mask=_MASK_JS, bridge=_BRIDGE_JS,
+                proc_scripts=_build_proc_scripts(procs),
+                proc_hook=_PROC_HOOK_JS if procs else ""),
             QUrl.fromLocalFile(str(PRTS_ROOT) + "/"),
         )
 
     def set_animation(self, animation: str, loop: bool = True):
-        """同骨架内切换动作（不重载页面、不重算取景框，交叉淡化）。"""
+        """同骨架内切换动作（不重载页面、不重算取景框，交叉淡化）。
+
+        先关程序动作层：回官方动作时自动清掉叠加姿势与特效。
+        """
         safe = animation.replace("'", "\\'")
         self.page().runJavaScript(
+            f"window.setProc && window.setProc(null);"
             f"window.player && window.player.animationState"
             f".setAnimation(0, '{safe}', {'true' if loop else 'false'});"
+        )
+
+    def set_proc(self, name: str):
+        """切换到自创程序动作（页面需带 procs 加载）；空名关闭程序层。"""
+        safe = name.replace("\\", "\\\\").replace("'", "\\'")
+        self.page().runJavaScript(
+            f"window.setProc && window.setProc('{safe}');"
         )
 
     def stop(self):

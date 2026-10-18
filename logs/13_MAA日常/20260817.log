@@ -1,0 +1,73 @@
+
+===== 2026-08-17 10:13:41 开始运行 =====
+[10:13:41] 启动明日方舟 ...
+[10:14:06] 游戏窗口已出现，等待 15s 加载
+[10:14:21] 启动 MAA ...
+[10:14:37] [MAA] Timer wait time: 10
+[10:14:46] [MAA] Timer canceled: false
+[10:14:49] [MAA] GetFightStage: from ["TO-8"], selected TO-8
+[10:14:49] [MAA] Start Task Chain: StartUp, Task ID: 1
+[10:16:34] [MAA] 任务出错: 开始唤醒
+[10:16:34] [MAA] Start Task Chain: Fight, Task ID: 2
+[10:16:40] [MAA] 任务出错: 理智作战
+[10:16:40] [MAA] Start Task Chain: Infrast, Task ID: 3
+[10:16:55] [MAA] 任务出错: 基建换班
+[10:16:55] [MAA] Start Task Chain: Recruit, Task ID: 4
+[10:17:10] [MAA] 出现错误, 已返回
+[10:17:10] [MAA] 任务出错: 自动公招
+[10:17:10] [MAA] Start Task Chain: Mall, Task ID: 5
+[10:17:46] [MAA] 任务出错: 信用收支
+[10:17:46] [MAA] Start Task Chain: Award, Task ID: 6
+[10:18:01] [MAA] 任务出错: 领取奖励
+[10:18:01] [MAA] 任务已全部完成！
+[10:18:04] MAA 已退出 (code=0)，任务全部完成
+===== 10:18:04 结束，状态 ok =====
+
+===== 2026-08-17 10:26:43 开始运行 =====
+[10:26:43] 启动明日方舟 ...
+[10:27:08] 游戏窗口已出现，等待 15s 加载
+[10:27:23] 启动 MAA ...
+[10:27:35] [MAA] Timer wait time: 10
+[10:27:44] [MAA] Timer canceled: false
+[10:27:44] [MAA] GetFightStage: from ["TO-8"], selected TO-8
+[10:27:44] [MAA] Start Task Chain: StartUp, Task ID: 1
+[10:28:14] [MAA] 完成任务: 开始唤醒
+[10:28:14] [MAA] Completed Task Chain: StartUp, Task ID: 1
+[10:28:17] [MAA] Start Task Chain: Fight, Task ID: 2
+[10:29:00] [MAA] 开始行动 1~6 次, -126理智
+[10:31:45] [MAA] TO-8 掉落统计:
+[10:31:45] [MAA] Depot updated from stage drops, 3 items processed
+[10:32:09] [MAA] 完成任务: 理智作战
+[10:32:09] [MAA] Completed Task Chain: Fight, Task ID: 2
+[10:32:09] [MAA] Start Task Chain: Infrast, Task ID: 3
+[10:32:36] [MAA] 当前设施: 制造站 01
+[10:32:45] [MAA] 当前设施: 制造站 02
+[10:32:51] [MAA] 当前设施: 制造站 03
+[10:32:54] [MAA] 当前设施: 制造站 04
+[10:33:09] [MAA] 当前设施: 贸易站 01
+[10:33:51] [MAA] 当前设施: 贸易站 02
+[10:34:12] [MAA] 当前设施: 会客室 01
+[10:35:24] [MAA] 当前设施: 训练室 01
+[10:35:45] [MAA] [珊比] “慢慢走~"
+[10:35:54] [MAA] 完成任务: 基建换班
+[10:35:54] [MAA] Completed Task Chain: Infrast, Task ID: 3
+[10:35:54] [MAA] Start Task Chain: Recruit, Task ID: 4
+[10:36:03] [MAA] 公招识别结果:
+[10:36:03] [MAA] 3 ★ Tags
+[10:36:06] [MAA] 已刷新标签
+[10:36:09] [MAA] 当前槽位已刷新1次
+[10:36:09] [MAA] 公招识别结果:
+[10:36:09] [MAA] 3 ★ Tags
+[10:36:09] [MAA] 无招聘许可，已返回
+[10:36:12] [MAA] 完成任务: 自动公招
+[10:36:12] [MAA] Completed Task Chain: Recruit, Task ID: 4
+[10:36:12] [MAA] Start Task Chain: Mall, Task ID: 5
+[10:37:21] [MAA] 完成任务: 访问好友
+[10:38:27] [MAA] 完成任务: 信用收支
+[10:38:27] [MAA] Completed Task Chain: Mall, Task ID: 5
+[10:38:27] [MAA] Start Task Chain: Award, Task ID: 6
+[10:38:48] [MAA] 完成任务: 领取奖励
+[10:38:48] [MAA] Completed Task Chain: Award, Task ID: 6
+[10:38:48] [MAA] 任务已全部完成！
+[10:38:51] MAA 已退出 (code=0)，任务全部完成
+===== 10:38:51 结束，状态 ok =====

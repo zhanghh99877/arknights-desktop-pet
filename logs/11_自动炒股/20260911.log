@@ -1,0 +1,12 @@
+
+===== 2026-09-11 11:00:05 开始运行 =====
+[strategy] 11:00:07 自动策略执行 | 2026-09-11 11:00:07
+[strategy] 11:00:07 [1/5] 查询持仓...
+[strategy] 11:00:07 [ERROR] API请求失败 /api/claw/mockTrading/positions: HTTPSConnectionPool(host='mkapi2.dfcfs.com', port=443): Max retries exceeded with url: /finskillshub/api/claw/mockTrading/positions (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x000001A89AA3F750>: Failed to establish a new connection: [Errno 11001] getaddrinfo failed'))
+[strategy] 11:00:07 当前无持仓,跳过清仓
+[strategy] 11:00:07 [2/5] 选股(趋势热度龙头)...
+[strategy] 11:00:08 [ERROR] 选股失败: 错误: HTTPSConnectionPool(host='mkapi2.dfcfs.com', port=443): Max retries exceeded with url: /finskillshub/api/claw/stock-screen (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object
+[strategy] 11:00:08 [WARN] 尝试放宽条件重试...
+[strategy] 11:00:09 [ERROR] 放宽条件后仍失败: 错误: HTTPSConnectionPool(host='mkapi2.dfcfs.com', port=443): Max retries exceeded with url: /finskillshub/api/claw/stock-screen (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object
+[strategy] 11:00:09 [ERROR] 选股失败,策略终止
+===== 11:00:09 结束，状态 failed =====

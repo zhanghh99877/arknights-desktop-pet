@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; background: #2b2f36; overflow: hidden;
+               height: 100%; user-select: none; }
+  /* 舞台：JS 按窗口等比缩放（letterbox），逻辑坐标 = 画布像素 */
+  #stage { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+  #gl { display: block; }
+  /* 覆盖层：逻辑坐标由 JS transform:scale 缩放；行序(layer)即 DOM 序，后 append 在上 */
+  #overlay { position: absolute; left: 0; top: 0; overflow: hidden; }
+  .ov { position: absolute; transform-origin: center center; cursor: move; }
+  .ov img { pointer-events: none; user-select: none; -webkit-user-drag: none; display: block; }
+  .ov svg { display: block; overflow: visible; }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <canvas id="gl" width="1280" height="720"></canvas>
+    <div id="overlay"></div>
+  </div>
+  <script src="{vendor}/spine-core.js"></script>
+  <script src="{vendor}/spine-webgl.js"></script>
+  {bridge_js}
+  <script src="html/stage.js"></script>
+</body>
+</html>

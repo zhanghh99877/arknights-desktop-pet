@@ -1,0 +1,1163 @@
+
+===== 2026-08-15 22:14:15 开始运行 =====
+[窗口] 已连接: 自动触发脚本弹窗 - PRTS - Visual Studio Code (PostMessage)
+[PRTS] 开始执行工作流: ClickVScode
+[执行] 开始 (start)
+[执行] 循环 (loop_main)
+开始循环 (mode=count)
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221426_307.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 1/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221441_149.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 2/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221453_810.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 3/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221506_509.png
+[执行] 查找文字 (find_yes)
+找到 2 个匹配的文字 'Yes'
+选中目标 '2 Yes, allow all edlits this session' → (558, 418) [置信度: 96.1%]
+  备选位置: (558,418), (484,382)
+[执行] 点击 (click_yes)
+点击变量坐标 (found_x, found_y) → (558, 418)
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 4/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221519_528.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 5/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221532_768.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 6/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221545_554.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 7/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221557_358.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 8/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221610_662.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 9/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221623_736.png
+[执行] 查找文字 (find_yes)
+找到 2 个匹配的文字 'Yes'
+选中目标 '2  Yes, allow python -m py_comp... for this.project.(shared)' → (632, 418) [置信度: 92.3%]
+  备选位置: (632,418), (482,382)
+[执行] 点击 (click_yes)
+点击变量坐标 (found_x, found_y) → (632, 418)
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 10/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221637_073.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 11/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221649_805.png
+[执行] 查找文字 (find_yes)
+找到 1 个匹配的文字 'Yes'
+选中目标 '1 Yes' → (484, 458) [置信度: 89.9%]
+[执行] 点击 (click_yes)
+点击变量坐标 (found_x, found_y) → (484, 458)
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 12/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221703_175.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 13/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221715_784.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 14/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221729_773.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 15/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221742_006.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 16/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221754_561.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 17/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221806_767.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 18/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221818_934.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 19/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221831_118.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 20/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221843_302.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 21/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221855_614.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 22/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221907_819.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 23/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221920_081.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 24/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221932_291.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 25/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221944_632.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 26/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_221956_934.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 27/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222009_127.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 28/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222021_318.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 29/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222033_516.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 30/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222045_788.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 31/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222057_995.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 32/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222110_248.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 33/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222122_463.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 34/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222134_699.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 35/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222146_894.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 36/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222159_126.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 37/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222211_292.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 38/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222223_511.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 39/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222235_740.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 40/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222247_907.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 41/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222300_125.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 42/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222312_344.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 43/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222324_671.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 44/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222336_892.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 45/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222349_108.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 46/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222401_295.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 47/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222413_520.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 48/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222425_719.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 49/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222437_943.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 50/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222450_193.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 51/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222502_406.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 52/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222514_620.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 53/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222526_856.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 54/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222539_087.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 55/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222551_315.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 56/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222603_540.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 57/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222615_769.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 58/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222627_982.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 59/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222640_183.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 60/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222652_386.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 61/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222704_585.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 62/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222716_866.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 63/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222729_120.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 64/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222741_383.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 65/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222753_570.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 66/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222805_798.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 67/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222818_066.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 68/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222830_330.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 69/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222842_581.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 70/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222854_800.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 71/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222907_065.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 72/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222919_346.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 73/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222931_674.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 74/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222945_908.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 75/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_222958_844.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 76/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223012_241.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 77/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223024_494.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 78/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223037_610.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 79/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223051_145.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 80/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223103_041.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 81/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223115_755.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 82/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223128_491.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 83/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223140_855.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 84/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223153_076.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 85/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223205_921.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 86/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223218_872.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 87/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223231_940.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 88/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223245_100.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 89/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223257_524.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 90/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223309_956.png
+[执行] 查找文字 (find_yes)
+找到 2 个匹配的文字 'Yes'
+选中目标 '2 Yes, allow python -m py_comp.. for this.project.,(shared)' → (632, 418) [置信度: 95.3%]
+  备选位置: (632,418), (484,382)
+[执行] 点击 (click_yes)
+点击变量坐标 (found_x, found_y) → (632, 418)
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 91/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223323_575.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 92/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223336_717.png
+[执行] 查找文字 (find_yes)
+找到 1 个匹配的文字 'Yes'
+选中目标 '1 Yes' → (484, 458) [置信度: 89.9%]
+[执行] 点击 (click_yes)
+点击变量坐标 (found_x, found_y) → (484, 458)
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 93/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223350_215.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 94/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223403_186.png
+[执行] 查找文字 (find_yes)
+找到 2 个匹配的文字 'Yes'
+选中目标 '2 Yes, allow QT_QPA_PLATFORM=...for this.project.(sharedl)' → (639, 495) [置信度: 91.7%]
+  备选位置: (639,495), (485,460)
+[执行] 点击 (click_yes)
+点击变量坐标 (found_x, found_y) → (639, 495)
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 95/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223415_849.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 96/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223428_468.png
+[执行] 查找文字 (find_yes)
+找到 2 个匹配的文字 'Yes'
+选中目标 '2 Yes, allow QT_QPA_PLATFORM=...for this.project.(shared)' → (639, 495) [置信度: 94.6%]
+  备选位置: (639,495), (485,460)
+[执行] 点击 (click_yes)
+点击变量坐标 (found_x, found_y) → (639, 495)
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 97/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223441_084.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 98/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223454_115.png
+[执行] 查找文字 (find_yes)
+找到 2 个匹配的文字 'Yes'
+选中目标 '2Yes, allow QT_QPA_PLATFORM=o..for this.project.(shared)' → (639, 495) [置信度: 95.4%]
+  备选位置: (639,495), (485,460)
+[执行] 点击 (click_yes)
+点击变量坐标 (found_x, found_y) → (639, 495)
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 99/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223508_181.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 100/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223520_738.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 101/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223534_654.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 102/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223546_816.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 103/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223558_967.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 104/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223611_079.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 105/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223623_264.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 106/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223635_426.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 107/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223647_564.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 108/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223659_681.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 109/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223711_796.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 110/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223723_955.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 111/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223736_098.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 112/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223748_247.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 113/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223800_393.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 114/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223812_526.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 115/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223824_815.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 116/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223837_310.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 117/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223849_523.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 118/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223901_691.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 119/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223913_859.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 120/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223925_996.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 121/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223938_225.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 122/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_223950_421.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 123/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224002_571.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 124/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224014_759.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 125/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224027_009.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 126/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224039_344.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 127/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224051_572.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 128/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224103_756.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 129/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224115_953.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 130/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224128_118.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 131/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224140_304.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 132/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224152_445.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 133/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224204_547.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 134/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224216_736.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 135/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224228_901.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 136/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224241_151.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 137/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224253_317.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 138/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224305_505.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 139/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224317_668.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 140/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224329_885.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 141/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224342_053.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 142/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224354_200.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 143/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224406_399.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 144/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224418_547.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 145/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224430_653.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 146/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224442_831.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 147/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224455_010.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 148/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224507_232.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 149/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224519_401.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 150/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224531_578.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 151/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224543_768.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 152/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260815_224557_952.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 153/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260816_034443_511.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 154/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260816_112814_006.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 155/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260816_112832_547.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 156/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260816_112847_630.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 157/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260816_112900_943.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 158/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260816_112914_111.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 159/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260816_112928_843.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...
+循环 160/8640
+[执行] 截图 (screenshot_1)
+截图成功: 1226x720 → cache/screenshots/screenshot_20260816_112942_349.png
+[执行] 查找文字 (find_yes)
+未找到文字 'Yes'
+[执行] 等待 (wait_10s)
+等待 10.0 秒...

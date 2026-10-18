@@ -15,6 +15,9 @@ from pathlib import Path
 PRTS_ROOT = Path(__file__).resolve().parent.parent
 RELAY_DIR = PRTS_ROOT / "Spine"
 TITLE_DIR = PRTS_ROOT / "Title"
+# 自创程序动作：Spine/proc/<模型名>/*.js，每个文件注册一个
+# window.PROCS[动作名]（见 core/pet_player.py 的运行时契约）
+PROC_DIR = RELAY_DIR / "proc"
 
 _IDENT = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 # 动画名常见前缀（过滤骨骼/插槽/皮肤/事件等同格式字符串）。
@@ -152,6 +155,18 @@ class RelayLibrary:
     def spine_info(self, model: str) -> dict | None:
         """模型资产：{"skel": Path, "atlas": Path, "animations": [动画名]}。"""
         return self._models.get(model)
+
+    def procs(self, model: str) -> dict[str, Path]:
+        """模型的自创程序动作 {动作名: js Path}。
+
+        每次调用实时扫描 Spine/proc/<模型名>/：新丢的 JS 文件切一下
+        模型即出现，无需重启。无目录 / 无文件返回空字典。
+        """
+        folder = PROC_DIR / model
+        if not folder.is_dir():
+            return {}
+        return {p.stem: p for p in sorted(folder.glob("*.js"))
+                if not p.stem.startswith("_")}
 
     def first_spine(self) -> str | None:
         """默认模型名。"""
