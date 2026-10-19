@@ -18,6 +18,7 @@ from core.assets import PRTS_ROOT, RelayLibrary
 
 VENDOR = (PRTS_ROOT / "Spine" / "vendor" / "spine-player").as_uri()
 STAGE_HTML = PRTS_ROOT / "html" / "stage.html"
+STAGE_JS = PRTS_ROOT / "html" / "stage.js"
 
 MIME_ASSET = "application/x-prts-asset"
 
@@ -112,10 +113,14 @@ class StageView(QWebEngineView):
         self._load_page()
 
     def _load_page(self):
-        # 不用 str.format：模板里 CSS 大括号多，replace 令牌更安全
+        # 不用 str.format：模板里 CSS 大括号多，replace 令牌更安全。
+        # stage.js 加 mtime 戳防 QtWebEngine 文件缓存拿旧版（调试期坑过）
         html = STAGE_HTML.read_text(encoding="utf-8")
         html = html.replace("{vendor}", VENDOR)
         html = html.replace("{bridge_js}", _BRIDGE_JS)
+        html = html.replace(
+            'src="html/stage.js"',
+            f'src="html/stage.js?v={int(STAGE_JS.stat().st_mtime)}"')
         self.setHtml(html, QUrl.fromLocalFile(str(PRTS_ROOT) + "/"))
 
     # ---- Qt → JS ----

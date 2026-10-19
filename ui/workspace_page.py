@@ -302,6 +302,8 @@ class WorkspacePage(QWidget):
         btn_settings = QPushButton("画布设置")
         self.btn_play = QToolButton(text="▶ 播放")
         self.btn_play.setAutoRaise(True)
+        btn_pause = QToolButton(text="⏸ 暂停")
+        btn_pause.setAutoRaise(True)
         btn_stop = QToolButton(text="⏹ 停止")
         btn_stop.setAutoRaise(True)
         self.time_label = QLabel("0.00 / 0.00 s")
@@ -316,6 +318,7 @@ class WorkspacePage(QWidget):
         bar.addWidget(btn_settings)
         bar.addSpacing(10)
         bar.addWidget(self.btn_play)
+        bar.addWidget(btn_pause)
         bar.addWidget(btn_stop)
         bar.addWidget(self.time_label)
         bar.addStretch(1)
@@ -390,6 +393,7 @@ class WorkspacePage(QWidget):
         self.timeline_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.timeline_scroll.setMaximumHeight(300)
+        self.timeline_scroll.viewport().installEventFilter(self)
         layer_btns = QVBoxLayout()
         btn_add_layer = QPushButton("＋图层")
         btn_del_layer = QPushButton("－图层")
@@ -411,6 +415,7 @@ class WorkspacePage(QWidget):
         btn_save.clicked.connect(self._on_save)
         btn_settings.clicked.connect(self._on_canvas_settings)
         self.btn_play.clicked.connect(self.stage.play)
+        btn_pause.clicked.connect(self.stage.pause)
         btn_stop.clicked.connect(self._on_stop)
         btn_export.clicked.connect(self._on_export)
         btn_import.clicked.connect(self._on_import_assets)
@@ -634,6 +639,14 @@ class WorkspacePage(QWidget):
     def _on_stop(self):
         self.stage.pause()
         self.stage.set_time(0)
+
+    def eventFilter(self, obj, e):
+        # 时间轴横向占满滚动区宽度（widgetResizable=False 时不会自动跟随）
+        if obj is self.timeline_scroll.viewport() and \
+                e.type() == e.Type.Resize:
+            self.timeline.setFixedWidth(
+                max(400, self.timeline_scroll.viewport().width()))
+        return super().eventFilter(obj, e)
 
     def _select(self, clip_id: str):
         self._sel = clip_id

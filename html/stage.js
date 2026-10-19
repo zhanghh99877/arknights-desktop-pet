@@ -91,18 +91,8 @@ function finalizeSkeletonData(asset, e) {
     var binary = assetManager.get(model.spine[asset].skel);
     var data = new spine.SkeletonBinary(new spine.AtlasAttachmentLoader(atlas))
       .readSkeletonData(binary);
-    // 锚定：setup pose 包围盒 → 脚底中心（skeleton 局部坐标）
-    var tmp = new spine.Skeleton(data);
-    if (data.skins.length) { tmp.setSkinByName(data.skins[0].name); tmp.setSlotsToSetupPose(); }
-    tmp.setToSetupPose();
-    tmp.updateWorldTransform();
-    var off = new spine.Vector2(), size = new spine.Vector2();
-    tmp.getBounds(off, size, []);
-    e.anchor = { x: off.x + size.x / 2, y: off.y };
-    e.boundsW = Math.max(1, size.x);
-    e.boundsH = Math.max(1, size.y);
     e.data = data;
-    e.status = 'ok';
+    e.status = 'ok';   // 锚点/包围盒由 actor 实例化时从活骨架量（见下）
   } catch (err) {
     e.status = 'err';
     log('骨架解析失败 ' + asset + ': ' + err);
@@ -162,12 +152,20 @@ SpineActor.prototype.instantiate = function (e) {
     this.skeleton.setSlotsToSetupPose();
   }
   this.skeleton.setToSetupPose();
+  // 锚点/包围盒从「活骨架」量：origin 处、setup pose 的 bounds 底边中心。
+  // 不能用临时骨架在加载时量——实测 3.8 运行时下两者结果可能差很远
+  // （曾把锚点量成 423 而实际 -50，角色整体偏 470px）。
+  this.skeleton.x = 0; this.skeleton.y = 0;
+  this.skeleton.scaleX = 1; this.skeleton.scaleY = 1;
+  this.skeleton.updateWorldTransform();
+  var off = new spine.Vector2(), size = new spine.Vector2();
+  this.skeleton.getBounds(off, size, []);
+  this.anchor = { x: off.x + size.x / 2, y: off.y };
+  this.boundsW = Math.max(1, size.x);
+  this.boundsH = Math.max(1, size.y);
   var sd = new spine.AnimationStateData(e.data);
   sd.defaultMix = 0;   // 确定性 seek：条目切换硬切（交叉淡化依赖 update 推进）
   this.state = new spine.AnimationState(sd);
-  this.anchor = e.anchor;
-  this.boundsW = e.boundsW;
-  this.boundsH = e.boundsH;
   this.ready = true;
   this.pending = false;
 };
@@ -254,16 +252,9 @@ function evalSpineActor(a, t, H) {
       px = last.x1; py = last.y1; rot = last.rot1 || 0;
     }
   }
-  // clip.scale 为倍率：1.0 = 角色高 画布半高（按骨架包围盒归一）
+  // clip.scale 为倍率：1.0 = 角色高 画布半高（按 setup 包围盒归一）
   var s = (0.5 * H / a.boundsH) * (c.scale || 1);
-  var th = -rot * Math.PI / 180;          // 舞台顺时针 → spine 逆时针
-  var ax = a.anchor.x * s, ay = a.anchor.y * s;
-  var cos = Math.cos(th), sin = Math.sin(th);
   var sk = a.skeleton;
-  // 绕脚底中心旋转：把锚点旋回原点再平移
-  sk.x = px - (ax * cos - ay * sin);
-  sk.y = (H - py) - (ax * sin + ay * cos);
-  sk.rotation = -rot;
   sk.scaleX = s; sk.scaleY = s;
   if (!sk.color) sk.color = new spine.Color(1, 1, 1, 1);
   sk.color.a = clamp01(c.opacity == null ? 1 : c.opacity);
@@ -287,7 +278,27 @@ function evalSpineActor(a, t, H) {
     a.setupDone = true;
   }
   a.state.apply(sk);
+  // 旋转：spine 3.8 的 skeleton.rotation 是死字段（运行时无消费者），
+  // 必须拧根骨骼，正值=世界逆时针=屏幕逆时针，用户角是屏幕顺时针→取负。
+  var root = sk.bones[0];
+  if (root) {
+    root.rotation = (root.data ? root.data.rotation : 0) - rot;
+  }
   sk.updateWorldTransform();
+  // 根骨骼锚定：动画常整体平移根骨骼（宿舍系 Default 能偏 470px），
+  // 把动画后的根骨骼世界位置钉到目标点——动画内部运动保留，
+  // 但整体不跑偏。旋转也自然绕根骨骼（≈身体中心）进行。
+  var twx = px, twy = H - py;   // 世界 y 向上
+  sk.x += twx - root.worldX;
+  sk.y += twy - root.worldY;
+  sk.updateWorldTransform();
+  // 缓存本轮包围盒（世界坐标，含旋转）：给点选命中用
+  var off = evalSpineActor._off || (evalSpineActor._off = new spine.Vector2());
+  var size = evalSpineActor._sz || (evalSpineActor._sz = new spine.Vector2());
+  try {
+    sk.getBounds(off, size, []);
+    a.lastBounds = { x: off.x, y: off.y, w: size.x, h: size.y };
+  } catch (e) {}
   return true;
 }
 
@@ -564,28 +575,14 @@ function toStage(clientX, clientY) {
   var k = glState.w / r.width;
   return { x: (clientX - r.left) * k, y: (clientY - r.top) * k };
 }
-// spine 命中：点相对脚底锚点的局部偏移（反旋转回正），
-// 身体在锚点上方（局部 y ∈ [-h, 0]）、水平居中 ±半宽
+// spine 命中：用上一轮渲染的真实包围盒（世界坐标，含动画姿态与旋转）
 function hitSpine(a, p) {
   var c = a.clip;
-  if (time < c.start || time >= c.end || !a.ready) return false;
-  var ms = c.moves || [];
-  var px = c.x, py = c.y, rot = c.rotation || 0;
-  var m = pickEntry(ms, time);
-  if (m) {
-    var k = clamp01((time - m.start) / Math.max(1e-6, m.end - m.start));
-    px = lerp(m.x0, m.x1, k); py = lerp(m.y0, m.y1, k); rot = lerp(m.rot0 || 0, m.rot1 || 0, k);
-  } else if (ms.length) {
-    if (time < ms[0].start) { px = ms[0].x0; py = ms[0].y0; rot = ms[0].rot0 || 0; }
-    else { px = ms[ms.length - 1].x1; py = ms[ms.length - 1].y1; rot = ms[ms.length - 1].rot1 || 0; }
-  }
-  var s = (0.5 * glState.h / a.boundsH) * (c.scale || 1);
-  var th = -rot * Math.PI / 180;
-  var dx = p.x - px, dy = p.y - py;
-  var lx = dx * Math.cos(-th) - dy * Math.sin(-th);
-  var ly = dx * Math.sin(-th) + dy * Math.cos(-th);
-  var w = a.boundsW * s / 2, h = a.boundsH * s;
-  return lx >= -w - 12 && lx <= w + 12 && ly >= -h - 12 && ly <= 12;
+  if (time < c.start || time >= c.end || !a.ready || !a.lastBounds) return false;
+  var wx = p.x, wy = glState.h - p.y;
+  var b = a.lastBounds;
+  return wx >= b.x - 14 && wx <= b.x + b.w + 14 &&
+         wy >= b.y - 14 && wy <= b.y + b.h + 14;
 }
 
 // 点选：收集落点命中的全部片段（覆盖层矩形 + spine 包围盒），
@@ -724,7 +721,10 @@ window.stageApi = {
       setTimeInternal(Math.min(time, duration));
     } catch (e) { log('loadProject 失败: ' + e); }
   },
-  setTime: function (t) { pause(); setTimeInternal(parseFloat(t) || 0); },
+  setTime: function (t) {
+    // 只改时间：播放中拉时间条不中断播放（暂停/停止由专门按钮控制）
+    setTimeInternal(parseFloat(t) || 0, true);
+  },
   // Qt 侧（时间轴/属性面板）选中变化 → 同步给点选循环
   selectClip: function (id) { window.__selId = id || null; },
   // 调试：舞台坐标点命中了哪些 spine（含几何数据）
@@ -740,6 +740,19 @@ window.stageApi = {
     }
     out.push({ hitsAt: hitsAt(p) });
     return JSON.stringify(out);
+  },
+  // 调试：片段骨架当前渲染包围盒（世界坐标 y 向上）
+  debugBounds: function (id) {
+    renderNow();
+    var a = actors[id];
+    if (!a || !a.skeleton) return null;
+    var off = new spine.Vector2(), size = new spine.Vector2();
+    try { a.skeleton.getBounds(off, size, []); } catch (e) { return null; }
+    return JSON.stringify({
+      x: Math.round(off.x * 10) / 10, y: Math.round(off.y * 10) / 10,
+      w: Math.round(size.x * 10) / 10, h: Math.round(size.y * 10) / 10,
+      canvasH: glState.h, anchor: a.anchor,
+    });
   },
   play: play,
   pause: pause,
