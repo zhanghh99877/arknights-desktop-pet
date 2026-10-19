@@ -262,9 +262,22 @@ function evalSpineActor(a, t, H) {
   sk.color.a = clamp01(c.opacity == null ? 1 : c.opacity);
 
   var ae = pickEntry(c.anims || [], t);
+  var isProc = false, procLocal = 0, targetAnim = '';
   if (ae && ae.anim) {
+    // 自创程序动作：PROCS 注册表命中 → 底层播其 base 官方动作，姿势叠加
+    isProc = !!(window.PROCS && window.PROCS[ae.anim]);
+    targetAnim = ae.anim;
+    if (isProc) {
+      var base = window.PROCS[ae.anim].base;
+      targetAnim = (base && sk.data.findAnimation(base)) ? base : '';
+    }
     if (a.curAnim !== ae.anim) {
-      a.state.setAnimation(0, ae.anim, true);
+      if (window.__clearFx) window.__clearFx();
+      try {
+        if (targetAnim) a.state.setAnimation(0, targetAnim, true);
+        else if (sk.data.findAnimation(ae.anim)) a.state.setAnimation(0, ae.anim, true);
+        else a.state.setToSetupPose ? null : null;
+      } catch (e) { try { a.state.setAnimation(0, ae.anim, true); } catch (e2) {} }
       a.curAnim = ae.anim;
       a.setupDone = false;
     }
@@ -272,6 +285,7 @@ function evalSpineActor(a, t, H) {
     if (tr && tr.animation) {
       var dur = tr.animation.duration || 1e-4;
       var local = (t - ae.start) * (ae.speed || 1);
+      procLocal = local;
       tr.loop = !!ae.loop;
       tr.trackTime = ae.loop ? local % dur : Math.min(local, Math.max(0, dur - 1e-4));
     }
@@ -285,6 +299,11 @@ function evalSpineActor(a, t, H) {
   var root = sk.bones[0];
   if (root) {
     root.rotation = (root.data ? root.data.rotation : 0) - rot;
+  }
+  // 程序动作叠加（updateWorldTransform 之前改骨骼才生效）
+  if (isProc) {
+    window.__fxOwner = c.id;
+    try { window.PROCS[ae.anim].pose(sk, procLocal, window.procFx); } catch (e) {}
   }
   sk.updateWorldTransform();
   // 根骨骼锚定：动画常整体平移根骨骼（宿舍系 Default 能偏 470px），
@@ -395,6 +414,7 @@ function renderNow() {
     }
     if (!layerVisible(c.layer)) {
       if (a.el) a.el.style.display = 'none';
+      if (window.__fxOwner === c.id && window.__clearFx) window.__clearFx();
       continue;
     }
     if (!a.ready) {
@@ -402,6 +422,7 @@ function renderNow() {
       continue;
     }
     if (time < c.start || time >= c.end) {
+      if (window.__fxOwner === c.id && window.__clearFx) window.__clearFx();
       // 拖时间窗外的 spine：画半透明 ghost，让拖动有视觉反馈
       if (drag && drag.id === c.id) {
         var gt = Math.max(c.start, Math.min(time, c.end - 1e-3));
@@ -578,6 +599,44 @@ function layerVisible(idx) {
   return !v || v[idx] !== false;
 }
 
+// ---------------- 自创程序动作（Spine/proc/<模型>/*.js） ----------------
+// 与播放页同一套契约：动作文件注册 window.PROCS[动作名] = {base, pose}；
+// pose(sk, t, fx) 在官方 apply 之后、updateWorldTransform 之前叠加姿势。
+window.PROCS = {};
+window.__fxOwner = null;
+
+/* 特效叠加层：骨世界坐标 + 像素偏移 → 屏幕定位（emoji 挂在 #overlay 里） */
+window.procFx = function (id, bone, dxPx, dyPx, opacity, emoji) {
+  var el = document.getElementById(id);
+  if (opacity <= 0) { if (el) el.style.display = 'none'; return; }
+  if (!bone || !model) return;
+  var W = glState.w, H = glState.h;
+  if (!el) {
+    el = document.createElement('div');
+    el.id = id;
+    el.style.cssText = 'position:absolute;font-size:26px;pointer-events:none;display:none;z-index:5;transform:translate(-50%,-50%);';
+    overlay.appendChild(el);
+    window.__fxIds = window.__fxIds || [];
+    window.__fxIds.push(id);
+  }
+  // 世界 → 舞台逻辑像素（y 翻转）
+  el.textContent = emoji;
+  el.style.left = bone.worldX + 'px';
+  el.style.top = (H - bone.worldY) + 'px';
+  el.style.marginLeft = dxPx + 'px';
+  el.style.marginTop = dyPx + 'px';
+  el.style.opacity = opacity;
+  el.style.display = 'block';
+};
+window.__clearFx = function () {
+  (window.__fxIds || []).forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.remove();
+  });
+  window.__fxIds = [];
+  window.__fxOwner = null;
+};
+
 function clipById(id) {
   if (!model) return null;
   for (var i = 0; i < model.clips.length; i++) {
@@ -643,15 +702,15 @@ function hitsAt(p) {
     if (a.lastBounds) {
       var wx = p.x, wy = glState.h - p.y;
       var b = a.lastBounds;
-      hit = wx >= b.x - 14 && wx <= b.x + b.w + 14 &&
-            wy >= b.y - 14 && wy <= b.y + b.h + 14;
+      hit = wx >= b.x - 20 && wx <= b.x + b.w + 20 &&
+            wy >= b.y - 20 && wy <= b.y + b.h + 20;
     } else {
       // 从未渲染过（播放头从未进过区间）：setup 包围盒近似
       var sc = a.clip;
       var s0 = (0.5 * glState.h / a.boundsH) * (sc.scale || 1);
       var w0 = a.boundsW * s0, h0 = a.boundsH * s0;
-      hit = Math.abs(p.x - sc.x) <= w0 / 2 + 14 &&
-            Math.abs(p.y - (sc.y - h0 / 2)) <= h0 / 2 + 14;
+      hit = Math.abs(p.x - sc.x) <= w0 / 2 + 20 &&
+            Math.abs(p.y - (sc.y - h0 / 2)) <= h0 / 2 + 20;
     }
     if (hit) hits.push(a.clip.id);
   }
@@ -669,18 +728,19 @@ stageBox.addEventListener('mousedown', function (e) {
   var p = toStage(e.clientX, e.clientY);
   window.__lastDown = JSON.stringify(p);   // 调试
   var hits = hitsAt(p);
-  var id = '';
-  if (hits.length) {
-    var cur = hits.indexOf(window.__selId);
-    id = hits[(cur + 1) % hits.length];
-  }
+  // 拖动优先：已选中的片段在指针下 → 直接拖它（不再触发循环切换，
+  // 之前点一下选中、再按下想拖时选中被切走，拖到了别的对象上）；
+  // 否则取最上层的命中。被压住的片段靠「单击松手循环」逐层点选。
+  var id = (window.__selId && hits.indexOf(window.__selId) >= 0)
+           ? window.__selId : (hits[0] || '');
   window.__selId = id;
   bcall('clipSelected', id);
   if (!id) return;
   var c = clipById(id);
   // 快照 move 条目：拖动时让活动的平移条目整体跟手（否则视觉不跟：
   // 条目插值优先于基准位置，拖了像没拖）。松手时把增量报给 Qt 落库。
-  drag = { id: id, sx: e.clientX, sy: e.clientY, x0: c.x, y0: c.y, moved: false,
+  drag = { id: id, sx: e.clientX, sy: e.clientY, x0: c.x, y0: c.y,
+           px: p.x, py: p.y, moved: false,
            moves: c.moves && c.moves.length
                   ? c.moves.map(function (m) { return Object.assign({}, m); })
                   : null };
@@ -715,6 +775,15 @@ document.addEventListener('mouseup', function () {
       bcall('clipMoved', d.id, c.x, c.y,
             Math.round((c.x - d.x0) * 10) / 10,
             Math.round((c.y - d.y0) * 10) / 10);
+    }
+  } else {
+    // 单击（未拖动）：在同一位置的堆叠命中里循环推进选择，
+    // 下次点击即可选中下一层被压住的片段
+    var hits = hitsAt({ x: d.px, y: d.py });
+    var idx = hits.indexOf(window.__selId);
+    if (hits.length > 1 && idx >= 0) {
+      window.__selId = hits[(idx + 1) % hits.length];
+      bcall('clipSelected', window.__selId);
     }
   }
 });
@@ -765,6 +834,16 @@ window.stageApi = {
       };
       readySent = false;
       initGL();
+      // 自创程序动作：eval 各模型的 proc 源码（注册 window.PROCS）
+      window.PROCS = {};
+      if (window.__clearFx) window.__clearFx();
+      var procs = model.procs || {};
+      for (var pm in procs) {
+        for (var pn in procs[pm]) {
+          try { (0, eval)('(function(){\n' + procs[pm][pn] + '\n})()'); }
+          catch (e) { log('程序动作加载失败 ' + pm + '/' + pn + ': ' + e); }
+        }
+      }
       resizeStage();
       reconcile();
       setTimeInternal(Math.min(time, duration));

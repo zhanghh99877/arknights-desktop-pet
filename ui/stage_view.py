@@ -52,6 +52,26 @@ def spine_lib(library: RelayLibrary, clips: list[dict]) -> dict:
     return out
 
 
+def procs_lib(library: RelayLibrary, clips: list[dict]) -> dict:
+    """模型用到的自创程序动作 → {模型名: {动作名: JS 源码}}。"""
+    out = {}
+    for c in clips:
+        if c.get("type") != "spine":
+            continue
+        name = c.get("asset", "")
+        if name in out:
+            continue
+        procs = {}
+        for pname, path in library.procs(name).items():
+            try:
+                procs[pname] = path.read_text(encoding="utf-8")
+            except OSError as e:
+                print(f"[stage] 程序动作读取失败 {path}: {e}")
+        if procs:
+            out[name] = procs
+    return out
+
+
 class StageBridge(QObject):
     """JS → Qt 事件桥（stageBridge）。"""
 
@@ -138,6 +158,7 @@ class StageView(QWebEngineView):
             "layersVisible": project.get("layers_visible", []),
             "clips": project["clips"],
             "spine": spine_lib(library, project["clips"]),
+            "procs": procs_lib(library, project["clips"]),
             "assets": assets_base,
         }
         js = "stageApi.loadProject(" + json.dumps(payload, ensure_ascii=False) + ")"

@@ -78,9 +78,11 @@ class AnimEntryEditor(QWidget):
         lay.addLayout(self._rows)
         lay.addWidget(add, alignment=Qt.AlignmentFlag.AlignLeft)
 
-    def load(self, clip: Clip, model_anims: list[str]):
+    def load(self, clip: Clip, model_anims: list[str],
+             procs: list[str] = ()):
         self._clip = clip
         self._model_anims = list(model_anims)
+        self._procs = list(procs)
         self._rebuild()
 
     def _rebuild(self):
@@ -109,7 +111,9 @@ class AnimEntryEditor(QWidget):
         anim.setMinimumContentsLength(6)
         for a in self._model_anims:
             anim.addItem(a, a)
-        idx = anim.findText(e.anim)
+        for p in self._procs:
+            anim.addItem("✨" + p, p)   # 自创程序动作（Spine/proc/）
+        idx = anim.findData(e.anim)
         if idx >= 0:
             anim.setCurrentIndex(idx)
         elif e.anim:
@@ -148,10 +152,11 @@ class AnimEntryEditor(QWidget):
         if not self._clip:
             return
         t0 = self._clip.start
+        first = self._model_anims[0] if self._model_anims else \
+            (self._procs[0] if self._procs else "")
         self._clip.anims.append(AnimEntry(
             start=t0, end=self._clip.end,
-            anim=self._model_anims[0] if self._model_anims else "",
-            speed=1.0, loop=True))
+            anim=first, speed=1.0, loop=True))
         self._rebuild()
         self.changed.emit()
 
@@ -729,11 +734,12 @@ class WorkspacePage(QWidget):
         if clip.type == "spine":
             info = self._library.spine_info(clip.asset)
             anims = info["animations"] if info else []
+            procs = list(self._library.procs(clip.asset).keys())
 
             g1 = QGroupBox("动画播放（一条一条：x秒~x秒 播 动作）")
             v1 = QVBoxLayout(g1)
             self._anim_editor = AnimEntryEditor()
-            self._anim_editor.load(clip, anims)
+            self._anim_editor.load(clip, anims, procs)
             self._anim_editor.changed.connect(self._emit_change)
             v1.addWidget(self._anim_editor)
             self._props_lay.addWidget(g1)
