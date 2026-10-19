@@ -464,7 +464,7 @@ class WorkspacePage(QWidget):
     def _on_project_pick(self):
         if self._loading:
             return
-        name = self._project_combo.currentData()
+        name = self.project_combo.currentData()
         proj = self._store.load(name)
         if not proj:
             return

@@ -51,7 +51,8 @@ class Timeline(QWidget):
         self._sel = ""
         self._playhead = 0.0
         self._pps = 80.0
-        self._visible = []           # 每行可见标志（[] = 全可见）
+        self._xoff = 0.0          # 横向平移偏移（px）
+        self._visible = []        # 每行可见标志（[] = 全可见）
         self._drag = None
         self._row_tops: list[int] = []
         self._row_heights: list[int] = []
@@ -67,7 +68,15 @@ class Timeline(QWidget):
         self._sel = selection
         self._visible = list(visible) if visible else [True] * self._layers
         self._relayout()
+        self._clamp_xoff()
         self.update()
+
+    def _content_w(self) -> float:
+        return LABEL_W + self._duration * self._pps + 60
+
+    def _clamp_xoff(self):
+        maxoff = max(0.0, self._content_w() - self.width())
+        self._xoff = min(max(0.0, self._xoff), maxoff)
 
     def _relayout(self):
         """计算每行 top/高度与片段子通道分配（区间图染色：重叠的纵向铺开）。"""
@@ -111,10 +120,10 @@ class Timeline(QWidget):
 
     # ---- 坐标 ----
     def _x(self, t: float) -> float:
-        return LABEL_W + t * self._pps
+        return LABEL_W + t * self._pps - self._xoff
 
     def _t(self, x: float) -> float:
-        return max(0.0, (x - LABEL_W) / self._pps)
+        return max(0.0, (x - LABEL_W + self._xoff) / self._pps)
 
     def _step(self) -> float:
         for s in _STEPS:
@@ -263,8 +272,9 @@ class Timeline(QWidget):
             return
         hit = self._hit_clip(x, row, y)
         if not hit:
-            self._drag = None
+            # 空白区域：左键拖 = 横向平移视图（点击仍是取消选中）
             self.selected.emit("")
+            self._drag = ("pan", x, self._xoff)
             return
         c, x0, x1 = hit
         self.selected.emit(c.get("id", ""))
@@ -283,6 +293,11 @@ class Timeline(QWidget):
         mode = self._drag[0]
         if mode == "seek":
             self.seek.emit(round(min(self._t(x), self._duration), 3))
+        elif mode == "pan":
+            _, x0, off0 = self._drag
+            self._xoff = off0 - (x - x0)
+            self._clamp_xoff()
+            self.update()
         elif mode == "move":
             _, cid, orig_start, orig_end, grab = self._drag[:5]
             delta = round((self._t(x - grab) - orig_start) * 10) / 10
@@ -314,10 +329,18 @@ class Timeline(QWidget):
             self._drag = None
 
     def wheelEvent(self, e):
-        if e.modifiers() & Qt.KeyboardModifier.ControlModifier:
+        mods = e.modifiers()
+        if mods & Qt.KeyboardModifier.ControlModifier:
             delta = e.angleDelta().y()
             factor = 1.25 if delta > 0 else 0.8
             self._pps = min(600.0, max(10.0, self._pps * factor))
+            self._relayout()
+            self._clamp_xoff()
+            self.update()
+        elif mods & Qt.KeyboardModifier.AltModifier:
+            # Alt+滚轮：横向平移
+            self._xoff += e.angleDelta().y() / 2.0
+            self._clamp_xoff()
             self.update()
         else:
             e.ignore()   # 交给外层 QScrollArea 纵向滚动
