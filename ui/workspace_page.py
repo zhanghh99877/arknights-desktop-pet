@@ -24,7 +24,7 @@ from core.assets import RelayLibrary
 from core.workspace import AnimEntry, Clip, MoveEntry, Project, WorkspaceStore
 from core.workspace_exporter import VideoExporter
 from ui.stage_view import MIME_ASSET, StageView
-from ui.timeline import RULER_H, ROW_H, LABEL_W, Timeline
+from ui.timeline import Timeline
 from ui.widgets import NoWheelComboBox, NoWheelDoubleSpinBox
 
 _IMG_EXT = "图片/SVG/HTML (*.png *.svg *.html *.htm)"
@@ -49,9 +49,10 @@ class AssetList(QListWidget):
                 kind = "png" if name.lower().endswith(".png") else "svg"
             else:
                 kind = self._kind
-            md.setData(MIME_ASSET, json.dumps(
-                {"kind": kind, "name": name},
-                ensure_ascii=False).encode("utf-8"))
+            payload = json.dumps({"kind": kind, "name": name},
+                                 ensure_ascii=False)
+            md.setData(MIME_ASSET, payload.encode("utf-8"))
+            md.setText(payload)  # 舞台走 HTML5 DnD，只保证 text/plain 可达
         return md
 
 
@@ -68,7 +69,7 @@ class AnimEntryEditor(QWidget):
         self._model_anims: list[str] = []
         self._loading = False
         self._rows = QVBoxLayout()
-        self._rows.setSpacing(2)
+        self._rows.setSpacing(1)
         self._rows.setContentsMargins(0, 0, 0, 0)
         add = QPushButton("＋ 添加动画条目")
         add.clicked.connect(self._add_row)
@@ -94,7 +95,7 @@ class AnimEntryEditor(QWidget):
     def _spin(self, value, lo, hi, step):
         s = NoWheelDoubleSpinBox(minimum=lo, maximum=hi, singleStep=step)
         s.setValue(value)
-        s.setFixedWidth(70)
+        s.setFixedWidth(50)
         return s
 
     def _make_row(self, e: AnimEntry):
@@ -165,7 +166,7 @@ class MoveEntryEditor(QWidget):
         self._clip: Clip | None = None
         self._loading = False
         self._rows = QVBoxLayout()
-        self._rows.setSpacing(2)
+        self._rows.setSpacing(1)
         self._rows.setContentsMargins(0, 0, 0, 0)
         add = QPushButton("＋ 添加平移/旋转条目")
         add.clicked.connect(self._add_row)
@@ -190,7 +191,7 @@ class MoveEntryEditor(QWidget):
     def _spin(self, value, lo=-99999, hi=99999, step=1.0):
         s = NoWheelDoubleSpinBox(minimum=lo, maximum=hi, singleStep=step)
         s.setValue(value)
-        s.setFixedWidth(72)
+        s.setFixedWidth(52)
         return s
 
     def _make_row(self, e: MoveEntry):
@@ -271,7 +272,7 @@ class WorkspacePage(QWidget):
         st.bridge.sigLog.connect(lambda m: print("[stage]", m))
         st.bridge.sigReady.connect(self._sync_now)  # 资源就绪后补一次全量同步
         st.pageLoaded.connect(self._sync_now)       # 页面加载晚于首次同步时兜底
-        st.assetDropped.connect(
+        st.bridge.sigAssetDropped.connect(
             lambda kind, name, x, y: self._add_clip(
                 kind, name, x, y, start=self._current_time))
         self.timeline.seek.connect(self._on_seek)
@@ -279,6 +280,7 @@ class WorkspacePage(QWidget):
         self.timeline.moved.connect(self._on_timeline_moved)
         self.timeline.trimmed.connect(self._on_timeline_trimmed)
         self.timeline.assetDropped.connect(self._on_timeline_drop)
+        self.timeline.layerVisibilityToggled.connect(self._on_layer_toggle)
 
         # 模型同步防抖
         self._sync_timer = QTimer(self)
@@ -337,14 +339,35 @@ class WorkspacePage(QWidget):
         # ---- 中：舞台 ----
         self.stage = StageView()
 
-        # ---- 右：属性 ----
+        # ---- 右：属性（无美化紧凑版：窄边框直角控件、小字号、贴边布局） ----
         self._props = QWidget()
         self._props_lay = QVBoxLayout(self._props)
         self._props_lay.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self._props_lay.setSpacing(2)
+        self._props_lay.setContentsMargins(2, 2, 2, 2)
         props_scroll = QScrollArea()
         props_scroll.setWidgetResizable(True)
         props_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        props_scroll.setMinimumWidth(380)
+        props_scroll.setMinimumWidth(270)
+        # 局部样式覆盖全局主题：白底、灰直边框、零圆角、极小内边距
+        props_scroll.setStyleSheet("""
+            QWidget { font-size: 6.5pt; background-color: #ffffff; }
+            QGroupBox { border: none; margin-top: 7px; padding-top: 1px;
+                        font-weight: bold; color: #555555; }
+            QGroupBox::title { subcontrol-origin: margin; left: 0px;
+                               padding: 0 1px; }
+            QDoubleSpinBox, QSpinBox, QLineEdit, QComboBox {
+                border: 1px solid #aaaaaa; border-radius: 0;
+                padding: 0 1px; min-height: 14px; background: #ffffff; }
+            QComboBox::drop-down { width: 14px; }
+            QPushButton { border: 1px solid #aaaaaa; border-radius: 0;
+                          padding: 0 5px; min-height: 14px;
+                          background: #f2f2f2; }
+            QPushButton:hover { background: #e4e4e4; border-color: #888888; }
+            QPushButton[class="danger"]:hover { background: #e5534b;
+                                                color: #ffffff; }
+            QScrollBar:vertical { width: 8px; }
+        """)
         props_scroll.setWidget(self._props)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -356,17 +379,24 @@ class WorkspacePage(QWidget):
         splitter.setStretchFactor(2, 0)
         splitter.setSizes([220, 700, 400])
 
-        # ---- 底：时间轴 ----
+        # ---- 底：时间轴（QScrollArea 纵向滚动） ----
         bottom = QHBoxLayout()
         bottom.setContentsMargins(8, 4, 8, 8)
         self.timeline = Timeline()
+        self.timeline_scroll = QScrollArea()
+        self.timeline_scroll.setWidget(self.timeline)
+        self.timeline_scroll.setWidgetResizable(False)
+        self.timeline_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.timeline_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.timeline_scroll.setMaximumHeight(300)
         layer_btns = QVBoxLayout()
         btn_add_layer = QPushButton("＋图层")
         btn_del_layer = QPushButton("－图层")
         layer_btns.addWidget(btn_add_layer)
         layer_btns.addWidget(btn_del_layer)
         layer_btns.addStretch(1)
-        bottom.addWidget(self.timeline, 1)
+        bottom.addWidget(self.timeline_scroll, 1)
         bottom.addLayout(layer_btns)
 
         root = QVBoxLayout(self)
@@ -517,7 +547,9 @@ class WorkspacePage(QWidget):
         assets_base = self._store.assets_dir(self._project.name).resolve().as_uri() + "/"
         self.stage.sync_project(d, self._library, assets_base)
         self.timeline.set_data(self._project.duration, self._project.layers,
-                               d["clips"], self._sel)
+                               d["clips"], self._sel,
+                               d.get("layers_visible"))
+        self.timeline.setFixedHeight(self.timeline.content_height())
         self.time_label.setText(
             f"{self._current_time:.2f} / {self._project.duration:.2f} s")
 
@@ -543,6 +575,7 @@ class WorkspacePage(QWidget):
         self._project.clips.append(clip)
         self._select(cid)
         self._emit_change()
+        self._sync_now()   # 立即推给舞台：拖入立刻看到落点（骨架加载有占位提示）
 
     def _on_stage_moved(self, clip_id: str, x: float, y: float):
         clip = self._project.clip(clip_id) if self._project else None
@@ -594,8 +627,8 @@ class WorkspacePage(QWidget):
             self.time_label.setText(f"{t:.2f} / {self._project.duration:.2f} s")
         if self._exporter and self._progress:
             self._progress.setValue(self._exporter.frames)
-            # JS 播到结尾自然收尾（帧数可能差一两帧，不以帧数为准死等）
-            if self._project and t >= self._project.duration - 0.05:
+            # JS 播到结尾（t 到 duration）自然收尾
+            if self._project and t >= self._project.duration - 1e-6:
                 self._export_finish(True, "")
 
     def _on_stop(self):
@@ -605,6 +638,7 @@ class WorkspacePage(QWidget):
     def _select(self, clip_id: str):
         self._sel = clip_id
         self.timeline.set_selection(clip_id)
+        self.stage.select_clip(clip_id)   # 同步给舞台点选循环
         self._rebuild_props()
 
     # ================= 属性面板 =================
@@ -621,6 +655,8 @@ class WorkspacePage(QWidget):
         self._loading = True
         box = QGroupBox(f"片段：{clip.name or clip.asset}")
         form = QFormLayout(box)
+        form.setSpacing(1)
+        form.setContentsMargins(4, 2, 4, 2)
 
         name_edit = QLineEdit(clip.name)
         form.addRow("名称", name_edit)
@@ -703,6 +739,9 @@ class WorkspacePage(QWidget):
     def _on_add_layer(self):
         if self._project:
             self._project.layers += 1
+            vis = list(self._project.layers_visible) or [True] * (self._project.layers - 1)
+            vis.append(True)
+            self._project.layers_visible = vis
             self._emit_change()
 
     def _on_del_layer(self):
@@ -713,6 +752,18 @@ class WorkspacePage(QWidget):
             QMessageBox.information(self, "删除图层", "最底图层还有片段，先移走或删除")
             return
         self._project.layers -= 1
+        vis = list(self._project.layers_visible) or [True] * (self._project.layers + 1)
+        self._project.layers_visible = vis[:self._project.layers]
+        self._emit_change()
+
+    def _on_layer_toggle(self, row: int):
+        """时间轴眼睛开关：切换图层可见性。"""
+        if not self._project or not (0 <= row < self._project.layers):
+            return
+        vis = list(self._project.layers_visible) or [True] * self._project.layers
+        vis = (vis + [True] * self._project.layers)[:self._project.layers]
+        vis[row] = not vis[row]
+        self._project.layers_visible = vis
         self._emit_change()
 
     def _on_import_assets(self):
@@ -755,9 +806,13 @@ class WorkspacePage(QWidget):
         ex = self._exporter
         if not ex:
             return
+        if self._progress:
+            self._progress.setValue(ex.frames)   # 帧到即更新，不依赖 timeUpdate
         if not ex.write_png_base64(b64):
             self._export_finish(False, ex.error or "写帧失败")
             return
+        if self._progress:
+            self._progress.setValue(ex.frames)
         if ex.done:
             self._export_finish(True, "")
 

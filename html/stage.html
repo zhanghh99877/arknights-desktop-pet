@@ -5,11 +5,16 @@
 <style>
   html, body { margin: 0; padding: 0; background: #2b2f36; overflow: hidden;
                height: 100%; user-select: none; }
-  /* 舞台：JS 按窗口等比缩放（letterbox），逻辑坐标 = 画布像素 */
+  /* 舞台：JS 按窗口等比缩放（letterbox），逻辑坐标 = 画布像素。
+     三层叠放：#bg 底层 2D 画布（背景色 + PNG 片段）→ #gl WebGL（spine）
+     → #overlay 顶层 DOM（SVG/HTML）。DOM 永远在最上，PNG 想垫在 spine
+     下面就必须画进 #bg 而不是挂 DOM。 */
   #stage { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
-  #gl { display: block; }
+  #bg { position: absolute; left: 0; top: 0; }
+  #gl { display: block; position: absolute; left: 0; top: 0; }
   /* 覆盖层：逻辑坐标由 JS transform:scale 缩放；行序(layer)即 DOM 序，后 append 在上 */
-  #overlay { position: absolute; left: 0; top: 0; overflow: hidden; }
+  #overlay { position: absolute; left: 0; top: 0; overflow: hidden;
+             transform-origin: 0 0; }
   .ov { position: absolute; transform-origin: center center; cursor: move; }
   .ov img { pointer-events: none; user-select: none; -webkit-user-drag: none; display: block; }
   .ov svg { display: block; overflow: visible; }
@@ -17,6 +22,7 @@
 </head>
 <body>
   <div id="stage">
+    <canvas id="bg" width="1280" height="720"></canvas>
     <canvas id="gl" width="1280" height="720"></canvas>
     <div id="overlay"></div>
   </div>

@@ -1,2 +1,10 @@
 # 工作区项目数据（用户本地项目，不入库）
 workspace/
+# Python 缓存
+__pycache__/
+*.pyc
+# 应用运行数据与日志（本机私有，不入库）
+logs/
+data/*.db
+# 失败导出的残留
+*.ffmpeg.log

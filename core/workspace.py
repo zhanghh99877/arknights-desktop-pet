@@ -110,14 +110,17 @@ class Project:
     canvas: dict = field(default_factory=lambda: dict(CANVAS_DEFAULT))
     duration: float = 5.0
     layers: int = 3              # 图层行数（行序即 z 序，0 行最上层）
+    layers_visible: list = field(default_factory=list)  # 每行可见标志，[] = 全可见
     clips: list[Clip] = field(default_factory=list)
     schema: int = SCHEMA
 
     def to_dict(self) -> dict:
+        vis = list(self.layers_visible) or [True] * self.layers
+        vis = (vis + [True] * self.layers)[:self.layers]
         return {
             "schema": self.schema, "name": self.name,
             "canvas": dict(self.canvas), "duration": self.duration,
-            "layers": self.layers,
+            "layers": self.layers, "layers_visible": vis,
             "clips": [c.to_dict() for c in self.clips],
         }
 
@@ -126,11 +129,18 @@ class Project:
         canvas = dict(CANVAS_DEFAULT)
         canvas.update({k: d.get("canvas", {}).get(k, v)
                        for k, v in CANVAS_DEFAULT.items()})
+        layers = max(1, int(d.get("layers", 3) or 3))
+        vis = d.get("layers_visible")
+        if not isinstance(vis, list):
+            vis = []
+        vis = [bool(v) for v in vis]
+        vis = (vis + [True] * layers)[:layers]
         return cls(
             name=str(d.get("name", "")),
             canvas=canvas,
             duration=float(d.get("duration", 5.0) or 5.0),
-            layers=max(1, int(d.get("layers", 3) or 3)),
+            layers=layers,
+            layers_visible=vis,
             clips=[Clip.from_dict(c) for c in d.get("clips", [])
                    if isinstance(c, dict)],
             schema=int(d.get("schema", SCHEMA) or SCHEMA),

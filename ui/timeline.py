@@ -1,8 +1,12 @@
-"""时间轴：标尺 + 图层行 + 片段块 + 播放头。自绘 QWidget。
+"""时间轴：标尺 + 图层行（子通道纵向扩展）+ 片段块 + 播放头。自绘 QWidget。
 
-图层 = 行：行 0 在最上面（z 最上层）。片段块颜色：spine 蓝 / png 绿 /
-svg 紫。拖动语义：中部=整体平移（连带 anims/moves 条目一起挪，
-Qt 侧负责），左右 6px 边缘=裁剪起止，标尺区=拖播放头。
+图层 = 行：行 0 在最上面（z 最上层）。同一行内时间段重叠的片段自动分到
+不同子通道纵向铺开（区间图染色），单条高度 20px，行高随子通道数伸缩。
+行首有 显/隐 眼睛开关（点击切换图层可见性）。
+
+片段块颜色：spine 蓝 / png 绿 / svg 紫。拖动语义：中部=整体平移（连带
+anims/moves 条目，Qt 侧负责），左右 6px 边缘=裁剪起止，标尺区=拖播放头。
+外部把本控件放进 QScrollArea 实现纵向滚动（见 content_height()）。
 """
 
 from __future__ import annotations
@@ -13,9 +17,12 @@ from PySide6.QtWidgets import QWidget
 
 from ui.stage_view import MIME_ASSET
 
-RULER_H = 30
-ROW_H = 34
+RULER_H = 26
+LANE_H = 20            # 单条片段高度
+LANE_GAP = 2
+ROW_PAD = 3
 LABEL_W = 64
+EYE_W = 22
 COLORS = {"spine": QColor("#2f8cff"), "png": QColor("#2ea44f"),
           "svg": QColor("#b15fd3")}
 BG_ROW = QColor("#f7fafd")
@@ -34,6 +41,7 @@ class Timeline(QWidget):
     moved = Signal(str, float)           # 片段整体平移：id, 时间增量（秒）
     trimmed = Signal(str, float, float)  # 裁剪起止：id, start, end
     assetDropped = Signal(str, str, int, float)  # kind, name, 图层行, 时间秒
+    layerVisibilityToggled = Signal(int)         # 眼睛开关：图层行号
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -42,20 +50,56 @@ class Timeline(QWidget):
         self._clips: list[dict] = []
         self._sel = ""
         self._playhead = 0.0
-        self._pps = 80.0          # px per second
-        self._drag = None         # (mode, id, 原始数据…)
-        self.setMouseTracking(False)
-        self.setMinimumHeight(RULER_H + 3 * ROW_H + 2)
+        self._pps = 80.0
+        self._visible = []           # 每行可见标志（[] = 全可见）
+        self._drag = None
+        self._row_tops: list[int] = []
+        self._row_heights: list[int] = []
+        self._lane_of: dict[str, int] = {}
+        self.setMinimumWidth(400)
 
     # ---- 数据 ----
     def set_data(self, duration: float, layers: int, clips: list[dict],
-                 selection: str = ""):
+                 selection: str = "", visible: list | None = None):
         self._duration = max(0.5, float(duration))
         self._layers = max(1, int(layers))
         self._clips = clips
         self._sel = selection
-        self.setMinimumHeight(RULER_H + self._layers * ROW_H + 2)
+        self._visible = list(visible) if visible else [True] * self._layers
+        self._relayout()
         self.update()
+
+    def _relayout(self):
+        """计算每行 top/高度与片段子通道分配（区间图染色：重叠的纵向铺开）。"""
+        self._row_tops = []
+        self._row_heights = []
+        self._lane_of = {}
+        y = RULER_H
+        for row in range(self._layers):
+            self._row_tops.append(y)
+            clips = sorted(
+                (c for c in self._clips if int(c.get("layer", 0)) == row),
+                key=lambda c: float(c.get("start", 0)))
+            lane_ends: list[float] = []
+            for c in clips:
+                s = float(c.get("start", 0))
+                e = float(c.get("end", 0))
+                for li, le in enumerate(lane_ends):
+                    if le <= s + 1e-9:
+                        lane_ends[li] = e
+                        self._lane_of[c.get("id", "")] = li
+                        break
+                else:
+                    lane_ends.append(e)
+                    self._lane_of[c.get("id", "")] = len(lane_ends) - 1
+            lanes = max(1, len(lane_ends))
+            h = lanes * (LANE_H + LANE_GAP) + 2 * ROW_PAD
+            self._row_heights.append(h)
+            y += h
+        self.setFixedHeight(y + 2)
+
+    def content_height(self) -> int:
+        return self.height()
 
     def set_playhead(self, t: float):
         self._playhead = max(0.0, t)
@@ -78,6 +122,15 @@ class Timeline(QWidget):
                 return s
         return _STEPS[-1]
 
+    def _row_at(self, y: float) -> int:
+        for row in range(self._layers):
+            if self._row_tops[row] <= y < self._row_tops[row] + self._row_heights[row]:
+                return row
+        return -1
+
+    def _is_visible(self, row: int) -> bool:
+        return row >= len(self._visible) or self._visible[row]
+
     # ---- 绘制 ----
     def paintEvent(self, _e):
         p = QPainter(self)
@@ -94,8 +147,8 @@ class Timeline(QWidget):
             x = self._x(t)
             if x > w:
                 break
-            p.drawLine(int(x), RULER_H - 8, int(x), RULER_H)
-            p.drawText(QRectF(x - 40, 2, 80, 16),
+            p.drawLine(int(x), RULER_H - 7, int(x), RULER_H)
+            p.drawText(QRectF(x - 40, 1, 80, 15),
                        Qt.AlignmentFlag.AlignHCenter, f"{t:g}")
             t += step
         p.setPen(QPen(BORDER))
@@ -103,51 +156,63 @@ class Timeline(QWidget):
 
         # 图层行
         for row in range(self._layers):
-            y = RULER_H + row * ROW_H
-            p.fillRect(0, y, w, ROW_H,
+            y0 = self._row_tops[row]
+            rh = self._row_heights[row]
+            p.fillRect(0, y0, w, rh,
                        BG_ROW if row % 2 == 0 else BG_ROW_ALT)
-            p.setPen(QPen(QColor("#9fb0c2")))
-            p.drawText(QRectF(0, y, LABEL_W - 6, ROW_H),
-                       Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
-                       f"图层 {row + 1}")
             p.setPen(QPen(BORDER))
-            p.drawLine(0, y + ROW_H - 1, w, y + ROW_H - 1)
+            p.drawLine(0, y0 + rh - 1, w, y0 + rh - 1)
+            # 眼睛开关 + 行号（隐藏行整体灰显）
+            eye_rect = QRectF(2, y0 + rh / 2 - 8, EYE_W, 16)
+            p.setPen(QPen(QColor("#4a90d9") if self._is_visible(row)
+                          else QColor("#b0b8c0")))
+            p.drawText(eye_rect, Qt.AlignmentFlag.AlignCenter,
+                       "显" if self._is_visible(row) else "隐")
+            p.setPen(QPen(QColor("#9fb0c2") if self._is_visible(row)
+                          else QColor("#c0c8d0")))
+            p.drawText(QRectF(EYE_W + 2, y0, LABEL_W - EYE_W - 6, rh),
+                       Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
+                       f"层{row + 1}")
         p.setPen(QPen(BORDER))
         p.drawLine(LABEL_W - 1, 0, LABEL_W - 1, h)
 
-        # 片段块（同行后画的在上，命中测试也按此顺序倒查）
+        # 片段块（子通道纵向铺开；隐藏图层半透明）
+        p.setFont(self.font())
         for c in self._clips:
+            cid = c.get("id", "")
             row = int(c.get("layer", 0))
             if not (0 <= row < self._layers):
                 continue
+            lane = self._lane_of.get(cid, 0)
             x0 = self._x(float(c.get("start", 0)))
             x1 = self._x(float(c.get("end", 0)))
             if x1 < LABEL_W or x0 > w:
                 continue
-            y = RULER_H + row * ROW_H + 4
-            rect = QRectF(x0, y, max(6.0, x1 - x0 - 2), ROW_H - 9)
-            color = COLORS.get(c.get("type", ""), QColor("#888888"))
+            y = self._row_tops[row] + ROW_PAD + lane * (LANE_H + LANE_GAP)
+            rect = QRectF(x0, y, max(6.0, x1 - x0 - 1.5), LANE_H)
+            color = QColor(COLORS.get(c.get("type", ""), QColor("#888888")))
+            if not self._is_visible(row):
+                color.setAlpha(70)
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(color)
-            p.drawRoundedRect(rect, 5, 5)
-            if c.get("id") == self._sel:
+            p.drawRoundedRect(rect, 4, 4)
+            if cid == self._sel:
                 p.setBrush(Qt.BrushStyle.NoBrush)
                 p.setPen(QPen(SEL_BORDER, 2))
-                p.drawRoundedRect(rect.adjusted(-1, -1, 1, 1), 5, 5)
-            # 名称 + 动作
+                p.drawRoundedRect(rect.adjusted(-1, -1, 1, 1), 4, 4)
             label = str(c.get("name") or c.get("asset") or "")
             if c.get("type") == "spine" and c.get("anims"):
                 first = c["anims"][0].get("anim", "")
                 if first:
-                    label = f"{label} · {first}"
+                    label = f"{label}·{first}"
             p.setPen(QPen(QColor("#ffffff")))
-            p.drawText(rect.adjusted(6, 0, -4, 0),
+            p.drawText(rect.adjusted(5, 0, -3, 0),
                        Qt.AlignmentFlag.AlignVCenter |
                        Qt.AlignmentFlag.AlignLeft |
                        Qt.TextFlag.TextSingleLine,
                        p.fontMetrics().elidedText(
                            label, Qt.TextElideMode.ElideRight,
-                           int(rect.width() - 10)))
+                           int(rect.width() - 8)))
 
         # 播放头
         px = self._x(self._playhead)
@@ -155,22 +220,27 @@ class Timeline(QWidget):
         p.drawLine(int(px), 0, int(px), h)
         p.setBrush(PLAYHEAD)
         p.setPen(Qt.PenStyle.NoPen)
-        p.drawRect(QRectF(px - 5, 0, 10, 8))
+        p.drawRect(QRectF(px - 5, 0, 10, 7))
         p.end()
 
     # ---- 命中 / 拖动 ----
-    def _hit_clip(self, x: float, row: int):
+    EDGE = 7  # 裁剪热区 px
+
+    def _hit_clip(self, x: float, row: int, y: float):
+        """同行命中：先按子通道纵坐标过滤，再取时间相交的最后绘制者。"""
         best = None
         for c in self._clips:
             if int(c.get("layer", 0)) != row:
                 continue
+            lane = self._lane_of.get(c.get("id", ""), 0)
+            cy = self._row_tops[row] + ROW_PAD + lane * (LANE_H + LANE_GAP)
+            if not (cy - 1 <= y <= cy + LANE_H + 1):
+                continue
             x0 = self._x(float(c.get("start", 0)))
             x1 = self._x(float(c.get("end", 0)))
             if x0 - 1 <= x <= x1 + 1:
-                best = (c, x0, x1)   # 后画的覆盖先画的
+                best = (c, x0, x1)
         return best
-
-    EDGE = 7  # 裁剪热区 px
 
     def mousePressEvent(self, e):
         x, y = e.position().x(), e.position().y()
@@ -178,10 +248,20 @@ class Timeline(QWidget):
             self._drag = ("seek",)
             self.seek.emit(round(self._t(x), 3))
             return
-        row = int((y - RULER_H) // ROW_H)
-        if not (0 <= row < self._layers):
+        if x < LABEL_W:
+            row = self._row_at(y)
+            if row >= 0:
+                # 眼睛开关热区
+                rh = self._row_heights[row]
+                eye_rect = QRectF(2, self._row_tops[row] + rh / 2 - 8,
+                                  EYE_W, 16)
+                if eye_rect.contains(x, y):
+                    self.layerVisibilityToggled.emit(row)
             return
-        hit = self._hit_clip(x, row)
+        row = self._row_at(y)
+        if row < 0:
+            return
+        hit = self._hit_clip(x, row, y)
         if not hit:
             self._drag = None
             self.selected.emit("")
@@ -206,20 +286,20 @@ class Timeline(QWidget):
         elif mode == "move":
             _, cid, orig_start, orig_end, grab = self._drag[:5]
             delta = round((self._t(x - grab) - orig_start) * 10) / 10
-            delta = max(delta, -orig_start)          # 不越过 0
+            delta = max(delta, -orig_start)
             if abs(delta) > 1e-9:
                 self._drag = ("move", cid, orig_start, orig_end, grab, delta)
                 for c in self._clips:                # 仅改本地副本做实时反馈
                     if c.get("id") == cid:           # release 后由 moved 信号落模型
                         c["start"] = orig_start + delta
                         c["end"] = orig_end + delta
+                self._relayout()
                 self.update()
         elif mode in ("trim_l", "trim_r"):
             _, cid, s0, e0 = self._drag
             t = round(self._t(x) * 10) / 10
             if mode == "trim_l":
-                t = min(t, e0 - 0.1)
-                t = max(0.0, t)
+                t = max(0.0, min(t, e0 - 0.1))
                 self.trimmed.emit(cid, t, e0)
             else:
                 t = max(t, s0 + 0.1)
@@ -240,7 +320,7 @@ class Timeline(QWidget):
             self._pps = min(600.0, max(10.0, self._pps * factor))
             self.update()
         else:
-            e.ignore()
+            e.ignore()   # 交给外层 QScrollArea 纵向滚动
 
     # ---- 素材拖入（按落点图层行/时间建片段） ----
     def dragEnterEvent(self, e):
@@ -259,8 +339,9 @@ class Timeline(QWidget):
         except ValueError:
             return
         pos = e.position()
-        row = int((pos.y() - RULER_H) // ROW_H)
-        row = max(0, min(self._layers - 1, row))
+        row = self._row_at(pos.y())
+        if row < 0:
+            row = self._layers - 1
         t = round(min(self._t(pos.x()), self._duration) * 10) / 10
         self.assetDropped.emit(info.get("kind", ""), info.get("name", ""),
                                row, max(0.0, t))

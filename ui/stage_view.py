@@ -59,7 +59,8 @@ class StageBridge(QObject):
     sigClipSelected = Signal(str)          # '' = 点了空白
     sigClipMoved = Signal(str, float, float)
     sigTime = Signal(float)
-    sigExportFrame = Signal(str, int)      # PNG base64、帧序号
+    sigExportFrame = Signal(str, int)      # JPEG base64、帧序号
+    sigAssetDropped = Signal(str, str, float, float)  # kind, name, x, y（舞台坐标）
 
     @Slot()
     def stageReady(self):
@@ -85,11 +86,19 @@ class StageBridge(QObject):
     def exportFrame(self, b64: str, index: int):
         self.sigExportFrame.emit(b64, index)
 
+    @Slot(str, str, float, float)
+    def assetDropped(self, kind: str, name: str, x: float, y: float):
+        self.sigAssetDropped.emit(kind, name, x, y)
+
 
 class StageView(QWebEngineView):
-    """舞台：加载 stage.html，同步项目模型，回报交互。"""
+    """舞台：加载 stage.html，同步项目模型，回报交互。
 
-    assetDropped = Signal(str, str, float, float)  # kind, name, x, y（舞台坐标）
+    注意：素材拖放走页面内 HTML5 DnD（stage.js），Qt 侧不开
+    acceptDrops——QWebEngineView 开 acceptDrops 在 Windows 上会
+    吞掉页面鼠标事件，导致点选/拖动失效。
+    """
+
     pageLoaded = Signal()                          # loadFinished(ok=True)
 
     def __init__(self, parent=None):
@@ -98,7 +107,6 @@ class StageView(QWebEngineView):
         self._channel = QWebChannel(self)
         self._channel.registerObject("stageBridge", self.bridge)
         self.page().setWebChannel(self._channel)
-        self.setAcceptDrops(True)
         self.loadFinished.connect(
             lambda ok: ok and self.pageLoaded.emit())
         self._load_page()
@@ -121,6 +129,7 @@ class StageView(QWebEngineView):
             "canvas": project["canvas"],
             "duration": project["duration"],
             "layers": project["layers"],
+            "layersVisible": project.get("layers_visible", []),
             "clips": project["clips"],
             "spine": spine_lib(library, project["clips"]),
             "assets": assets_base,
@@ -131,6 +140,10 @@ class StageView(QWebEngineView):
     def set_time(self, t: float):
         self._js(f"stageApi.setTime({float(t)})")
 
+    def select_clip(self, clip_id: str):
+        safe = clip_id.replace("\\", "\\\\").replace("'", "\\'")
+        self._js(f"stageApi.selectClip('{safe}')")
+
     def play(self):
         self._js("stageApi.play()")
 
@@ -139,34 +152,3 @@ class StageView(QWebEngineView):
 
     def set_export_mode(self, on: bool):
         self._js(f"stageApi.setExportMode({'true' if on else 'false'})")
-
-    # ---- 拖放 ----
-    def dragEnterEvent(self, e):
-        if e.mimeData().hasFormat(MIME_ASSET):
-            e.acceptProposedAction()
-
-    def dragMoveEvent(self, e):
-        if e.mimeData().hasFormat(MIME_ASSET):
-            e.acceptProposedAction()
-
-    def dropEvent(self, e):
-        raw = bytes(e.mimeData().data(MIME_ASSET)).decode("utf-8", "replace")
-        try:
-            info = json.loads(raw)
-        except ValueError:
-            return
-        pos = e.position()
-
-        def on_view(view_json):
-            try:
-                v = json.loads(view_json or "{}")
-            except ValueError:
-                return
-            scale = v.get("scale") or 1
-            x = (pos.x() - v.get("left", 0)) * scale
-            y = (pos.y() - v.get("top", 0)) * scale
-            if 0 <= x and 0 <= y:
-                self.assetDropped.emit(info.get("kind", ""),
-                                       info.get("name", ""), x, y)
-
-        self.page().runJavaScript("stageApi.viewInfo()", on_view)

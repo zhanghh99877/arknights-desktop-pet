@@ -16,9 +16,18 @@
 'use strict';
 
 // ---------------- 桥 ----------------
-function bcall(name, a, b) {
+// 注意：必须按真实参数个数调用——多传 undefined 会被 QtWebChannel 序列化成
+// null，导致 Slot 参数个数不匹配而被静默丢弃（timeUpdate 曾因此永远到不了 Qt）
+function bcall(name, a, b, c, d) {
   var br = window.bridge;
-  if (br) { try { br[name](a, b); } catch (e) { console.warn('[stage] bridge.' + name, e); } }
+  if (!br) return;
+  try {
+    if (a === undefined) br[name]();
+    else if (b === undefined) br[name](a);
+    else if (c === undefined) br[name](a, b);
+    else if (d === undefined) br[name](a, b, c);
+    else br[name](a, b, c, d);
+  } catch (e) { console.warn('[stage] bridge.' + name, e); }
 }
 function log(m) { console.log('[stage]', m); bcall('log', String(m)); }
 
@@ -35,6 +44,8 @@ function pickEntry(list, t) {
 
 // ---------------- DOM ----------------
 var stageBox = document.getElementById('stage');
+var bgCanvas = document.getElementById('bg');
+var bgCtx = bgCanvas.getContext('2d');
 var glCanvas = document.getElementById('gl');
 var overlay = document.getElementById('overlay');
 
@@ -135,8 +146,16 @@ function SpineActor(clip) {
   this.anchor = { x: 0, y: 0 };
   this.boundsW = 100; this.boundsH = 100;
   this.pending = true;
+  // 加载占位：骨架资源就绪前显示位置提示（拖入 Spine 立即可见落点）
+  var el = document.createElement('div');
+  el.className = 'ov';
+  el.style.cssText = 'color:#888;font:12px sans-serif;cursor:move;white-space:nowrap;';
+  el.textContent = '⏳ ' + (clip.name || clip.asset);
+  overlay.appendChild(el);
+  this.el = el;
 }
 SpineActor.prototype.instantiate = function (e) {
+  if (this.el) { this.el.remove(); this.el = null; }
   this.skeleton = new spine.Skeleton(e.data);
   if (e.data.skins.length) {
     this.skeleton.setSkinByName(e.data.skins[0].name);
@@ -157,25 +176,45 @@ function OvActor(clip, assetsBase) {
   this.kind = 'ov';
   this.clip = clip;
   this.img = null;
-  var el = document.createElement('div');
-  el.className = 'ov';
-  el.dataset.clipId = clip.id;
-  this.el = el;
+  this.natW = 200; this.natH = 200;   // 图片未加载前的占位尺寸
   if (clip.type === 'png') {
-    var img = document.createElement('img');
+    // PNG 画进底层 #bg 2D 画布（可垫在 spine 下面）；不走 DOM
+    var img = new Image();
+    var self = this;
+    img.onload = function () {
+      self.natW = img.naturalWidth || 200;
+      self.natH = img.naturalHeight || 200;
+      renderNow();
+    };
     img.src = assetsBase + encodeURIComponent(clip.asset);
-    img.draggable = false;
-    el.appendChild(img);
     this.img = img;
-  } else { // svg：内联渲染，SMIL/CSS 动画才会动
+    this.el = null;
+  } else { // svg：内联 DOM，SMIL/CSS 动画才会动；DOM 层永远在最上
+    var el = document.createElement('div');
+    el.className = 'ov';
+    el.dataset.clipId = clip.id;
+    this.el = el;
     var wrap = document.createElement('div');
     el.appendChild(wrap);
     fetch(assetsBase + encodeURIComponent(clip.asset))
       .then(function (r) { return r.text(); })
       .then(function (txt) { wrap.innerHTML = txt; })
       .catch(function (e) { log('SVG 加载失败 ' + clip.asset + ': ' + e); });
+    overlay.appendChild(el);
   }
-  overlay.appendChild(el);
+}
+
+// PNG 片段：画进底层背景画布（底色之下无物，spine 之下）
+function evalPngActor(a, t) {
+  var c = a.clip;
+  if (!layerVisible(c.layer) || t < c.start || t >= c.end || !a.img) return;
+  var w = a.natW * (c.scale || 1), h = a.natH * (c.scale || 1);
+  bgCtx.save();
+  bgCtx.translate(c.x, c.y);
+  bgCtx.rotate((c.rotation || 0) * Math.PI / 180);
+  bgCtx.globalAlpha = clamp01(c.opacity == null ? 1 : c.opacity);
+  try { bgCtx.drawImage(a.img, -w / 2, -h / 2, w, h); } catch (e) {}
+  bgCtx.restore();
 }
 
 function createActor(clip) {
@@ -252,7 +291,19 @@ function evalSpineActor(a, t, H) {
   return true;
 }
 
+// spine 加载占位：跟随片段基准位置，就绪前提示落点
+function evalPlaceholder(a, t) {
+  var c = a.clip;
+  var vis = layerVisible(c.layer) && t >= c.start && t < c.end;
+  a.el.style.display = vis ? 'block' : 'none';
+  if (!vis) return;
+  a.el.style.left = c.x + 'px';
+  a.el.style.top = c.y + 'px';
+  a.el.style.transform = 'translate(-50%,-100%)';
+}
+
 function evalOvActor(a, t) {
+  if (!a.el) return;   // PNG 走 #bg 画布，无 DOM
   var c = a.clip;
   var visible = t >= c.start && t < c.end;
   var el = a.el;
@@ -267,7 +318,7 @@ function evalOvActor(a, t) {
 
 // ---------------- 渲染 ----------------
 var time = 0, playing = false, rafId = null, lastTs = 0;
-var exportMode = false, exportIdx = 0, lastCapTs = 0;
+var exportMode = false, exportIdx = 0, capAcc = 0;
 
 function resizeStage() {
   var vw = window.innerWidth, vh = window.innerHeight;
@@ -276,6 +327,8 @@ function resizeStage() {
   var dh = Math.max(1, Math.floor(glState.h * k));
   stageBox.style.width = dw + 'px';
   stageBox.style.height = dh + 'px';
+  bgCanvas.style.width = dw + 'px';
+  bgCanvas.style.height = dh + 'px';
   glCanvas.style.width = dw + 'px';
   glCanvas.style.height = dh + 'px';
   overlay.style.width = glState.w + 'px';
@@ -289,7 +342,24 @@ function renderNow() {
   var W = glState.w, H = glState.h;
   if (glCanvas.width !== W) glCanvas.width = W;
   if (glCanvas.height !== H) glCanvas.height = H;
-  glCanvas.style.background = glState.bg || '#ffffff';
+  if (bgCanvas.width !== W) bgCanvas.width = W;
+  if (bgCanvas.height !== H) bgCanvas.height = H;
+  glCanvas.style.background = 'transparent';
+  var bg = glState.bg || '#ffffff';
+  bgCanvas.style.background = bg;
+  bgCtx.fillStyle = bg;
+  bgCtx.fillRect(0, 0, W, H);
+
+  // 1) 底层：PNG 片段（layer 大先画，小的后画在上）
+  var pngs = [];
+  for (var id in actors) {
+    var pa = actors[id];
+    if (pa.kind === 'ov' && pa.img) pngs.push(pa);
+  }
+  pngs.sort(function (x, y) { return y.clip.layer - x.clip.layer; });
+  for (var pi = 0; pi < pngs.length; pi++) evalPngActor(pngs[pi], time);
+
+  // 2) 中层：spine（GL 透明底）
   var gl = context.gl;
   gl.viewport(0, 0, W, H);
   gl.clearColor(0, 0, 0, 0);
@@ -300,13 +370,24 @@ function renderNow() {
   cam.position.set(W / 2, H / 2, 0);
   cam.zoom = 1;
 
-  // 覆盖层先求值（DOM 显隐/位置，evalOvActor 内部处理存在区间）
+  // 3) 顶层：SVG/HTML DOM（evalOvActor 内部处理存在区间与隐藏）
   var spineList = [];
-  for (var id in actors) {
+  for (id in actors) {
     var a = actors[id];
     var c = a.clip;
-    if (a.kind === 'ov') { evalOvActor(a, time); continue; }
-    if (time < c.start || time >= c.end || !a.ready) continue;
+    if (a.kind === 'ov') {
+      if (a.el) evalOvActor(a, time);
+      continue;
+    }
+    if (!layerVisible(c.layer)) {
+      if (a.el) a.el.style.display = 'none';
+      continue;
+    }
+    if (!a.ready) {
+      if (a.el) evalPlaceholder(a, time);   // spine 加载占位
+      continue;
+    }
+    if (time < c.start || time >= c.end) continue;
     evalSpineActor(a, time, H);
     spineList.push(a);
   }
@@ -329,15 +410,18 @@ function setTimeInternal(t, fromClock) {
 }
 function tick(ts) {
   if (!playing) return;
+  var rawMs = Math.min(ts - lastTs, 250);   // 抽帧累积用原始间隔（钳上限防爆）
   var dt = Math.min((ts - lastTs) / 1000, 0.25);
   lastTs = ts;
   setTimeInternal(time + dt, true);
   if (exportMode) {
-    // 按项目 fps 抽帧（高刷屏 rAF 更快，全抓会快放）
+    // 按项目 fps 抽帧：累积真实流逝时间到阈值就抓，避免闸值比较在
+    // 16.7ms rAF 网格下漂移（实测平均 24fps → 视频变 4.3s）
     var fps = (model && model.canvas && model.canvas.fps) || 30;
+    capAcc += rawMs;
     var interval = 1000 / Math.max(1, fps);
-    if (ts - lastCapTs >= interval - 0.5) {
-      lastCapTs = ts;
+    while (capAcc >= interval - 0.01) {
+      capAcc -= interval;
       captureFrame();
     }
   }
@@ -390,28 +474,19 @@ function captureFrame() {
   if (compCanvas.width !== W) compCanvas.width = W;
   if (compCanvas.height !== H) compCanvas.height = H;
   var ctx = compCtx;
+  // 合成顺序与预览一致：底层 #bg（底色+PNG）→ 中层 WebGL（spine）→ 顶层 SVG DOM
   ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = glState.bg || '#ffffff';
-  ctx.fillRect(0, 0, W, H);
-  ctx.drawImage(glCanvas, 0, 0);
+  try { ctx.drawImage(bgCanvas, 0, 0); } catch (e) {}
+  try { ctx.drawImage(glCanvas, 0, 0); } catch (e) {}
 
   var rect = stageBox.getBoundingClientRect();
   var k = W / rect.width;
-  var imgActors = [], svgActors = [];
+  var svgActors = [];
   var kids = overlay.children;
   for (var i = 0; i < kids.length; i++) {
     if (kids[i].style.display === 'none') continue;
     var a = actors[kids[i].dataset.clipId];
-    if (!a) continue;
-    (a.img ? imgActors : svgActors).push(a);
-  }
-  // PNG：同源 file:// 图片直接 drawImage
-  for (i = 0; i < imgActors.length; i++) {
-    var a2 = imgActors[i], r = a2.el.getBoundingClientRect();
-    try {
-      ctx.drawImage(a2.img, (r.left - rect.left) * k, (r.top - rect.top) * k,
-                    r.width * k, r.height * k);
-    } catch (e) { log('PNG 合成失败: ' + e); }
+    if (a && a.el) svgActors.push(a);   // 现在只剩 SVG/HTML
   }
   // SVG：foreignObject + 计算样式内联（SMIL/CSS 动画取当前帧计算值）
   var finish = function () {
@@ -446,6 +521,37 @@ function captureFrame() {
 }
 
 // ---------------- 舞台交互（点选 / 拖动改基准位置） ----------------
+// 素材拖放走 HTML5 DnD（Qt 侧 QWebEngineView 开 acceptDrops 会吞掉
+// 页面鼠标事件，导致点选/拖动失效——这是 Qt on Windows 的已知行为）。
+// Qt 列表拖来的自定义 mime 不一定映射进 dataTransfer，故同时用
+// text/plain 携带 JSON 兜底。
+var DROP_MIME = 'application/x-prts-asset';
+stageBox.addEventListener('dragover', function (e) {
+  var types = e.dataTransfer ? e.dataTransfer.types : [];
+  if (types.indexOf(DROP_MIME) >= 0 || types.indexOf('text/plain') >= 0) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }
+});
+stageBox.addEventListener('drop', function (e) {
+  var raw = '';
+  try {
+    raw = e.dataTransfer.getData(DROP_MIME) ||
+          e.dataTransfer.getData('text/plain') || '';
+  } catch (err) { return; }
+  var info = null;
+  try { info = JSON.parse(raw); } catch (err) { return; }
+  if (!info || !info.name) return;
+  e.preventDefault();
+  var p = toStage(e.clientX, e.clientY);
+  bcall('assetDropped', info.kind || '', info.name, p.x, p.y);
+});
+
+function layerVisible(idx) {
+  var v = model && model.layersVisible;
+  return !v || v[idx] !== false;
+}
+
 function clipById(id) {
   if (!model) return null;
   for (var i = 0; i < model.clips.length; i++) {
@@ -458,7 +564,8 @@ function toStage(clientX, clientY) {
   var k = glState.w / r.width;
   return { x: (clientX - r.left) * k, y: (clientY - r.top) * k };
 }
-// spine 命中：脚底锚点 + 宽高构成（支持旋转的）矩形
+// spine 命中：点相对脚底锚点的局部偏移（反旋转回正），
+// 身体在锚点上方（局部 y ∈ [-h, 0]）、水平居中 ±半宽
 function hitSpine(a, p) {
   var c = a.clip;
   if (time < c.start || time >= c.end || !a.ready) return false;
@@ -478,30 +585,67 @@ function hitSpine(a, p) {
   var lx = dx * Math.cos(-th) - dy * Math.sin(-th);
   var ly = dx * Math.sin(-th) + dy * Math.cos(-th);
   var w = a.boundsW * s / 2, h = a.boundsH * s;
-  var ax = a.anchor.x * s;
-  var lx0 = -ax - w, lx1 = -ax + w;   // 锚点 x 居中 ±半宽
-  return lx >= lx0 - 10 && lx <= lx1 + 10 && ly >= -10 && ly <= h + 10;
+  return lx >= -w - 12 && lx <= w + 12 && ly >= -h - 12 && ly <= 12;
+}
+
+// 点选：收集落点命中的全部片段（覆盖层矩形 + spine 包围盒），
+// 多次点击循环切换选中——重叠时 buried 对象也能选中
+function hitsAt(p) {
+  var hits = [];
+  // PNG 片段（画在 #bg）：中心锚点旋转矩形命中
+  for (var pid in actors) {
+    var pa = actors[pid];
+    if (!(pa.kind === 'ov' && pa.img)) continue;
+    var pc = pa.clip;
+    if (!layerVisible(pc.layer) || time < pc.start || time >= pc.end) continue;
+    var pw = pa.natW * (pc.scale || 1), phh = pa.natH * (pc.scale || 1);
+    var pth = -(pc.rotation || 0) * Math.PI / 180;
+    var pdx = p.x - pc.x, pdy = p.y - pc.y;
+    var plx = pdx * Math.cos(-pth) - pdy * Math.sin(-pth);
+    var ply = pdx * Math.sin(-pth) + pdy * Math.cos(-pth);
+    if (Math.abs(plx) <= pw / 2 + 12 && Math.abs(ply) <= phh / 2 + 12) {
+      hits.push(pc.id);
+    }
+  }
+  var kids = overlay.children;
+  for (var i = 0; i < kids.length; i++) {
+    var el = kids[i];
+    var c = clipById(el.dataset.clipId);
+    if (!c || !layerVisible(c.layer)) continue;
+    var r = el.getBoundingClientRect();
+    var orect = overlay.getBoundingClientRect();
+    var k = glState.w / orect.width;
+    var x0 = (r.left - orect.left) * k, y0 = (r.top - orect.top) * k;
+    var x1 = (r.right - orect.left) * k, y1 = (r.bottom - orect.top) * k;
+    if (p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1) hits.push(c.id);
+  }
+  for (var aid in actors) {
+    var a = actors[aid];
+    if (a.kind === 'spine' && layerVisible(a.clip.layer) && hitSpine(a, p)) {
+      hits.push(a.clip.id);
+    }
+  }
+  // layer 小（上）优先
+  hits.sort(function (x, y) {
+    var cx = clipById(x), cy = clipById(y);
+    return (cx ? cx.layer : 99) - (cy ? cy.layer : 99);
+  });
+  return hits;
 }
 
 var drag = null;
 stageBox.addEventListener('mousedown', function (e) {
   if (e.button !== 0) return;
   var p = toStage(e.clientX, e.clientY);
-  // 覆盖层优先（DOM 自上往下）
-  var t = e.target.closest ? e.target.closest('.ov') : null;
-  var id = null;
-  if (t) id = t.dataset.clipId;
-  if (!id) {
-    // spine 命中：layer 小（上）优先
-    var list = [];
-    for (var aid in actors) {
-      var a = actors[aid];
-      if (a.kind === 'spine' && hitSpine(a, p)) list.push(a);
-    }
-    list.sort(function (x, y) { return x.clip.layer - y.clip.layer; });
-    if (list.length) id = list[0].clip.id;
+  window.__lastDown = JSON.stringify(p);   // 调试
+  var hits = hitsAt(p);
+  var id = '';
+  if (hits.length) {
+    var cur = hits.indexOf(window.__selId);
+    id = hits[(cur + 1) % hits.length];
   }
-  bcall('clipSelected', id || '');
+  window.__selId = id;
+  bcall('clipSelected', id);
   if (!id) return;
   var c = clipById(id);
   drag = { id: id, sx: e.clientX, sy: e.clientY, x0: c.x, y0: c.y, moved: false };
@@ -551,10 +695,11 @@ function reconcile() {
       actors[clip.id] = createActor(clip);
     }
   }
-  // 覆盖层按 layer 重排：layer 小（上）后 append → DOM 后 = 视觉上层
+  // 覆盖层按 layer 重排：layer 小（上）后 append → DOM 后 = 视觉上层。
+  // spine 加载占位也参与（它有 el）。
   var ovs = [];
   for (id in actors) {
-    if (actors[id].kind === 'ov') ovs.push(actors[id]);
+    if (actors[id].el) ovs.push(actors[id]);
   }
   ovs.sort(function (x, y) { return y.clip.layer - x.clip.layer; });
   for (i = 0; i < ovs.length; i++) overlay.appendChild(ovs[i].el);
@@ -580,12 +725,28 @@ window.stageApi = {
     } catch (e) { log('loadProject 失败: ' + e); }
   },
   setTime: function (t) { pause(); setTimeInternal(parseFloat(t) || 0); },
+  // Qt 侧（时间轴/属性面板）选中变化 → 同步给点选循环
+  selectClip: function (id) { window.__selId = id || null; },
+  // 调试：舞台坐标点命中了哪些 spine（含几何数据）
+  debugHit: function (x, y) {
+    var p = { x: x, y: y };
+    var out = [];
+    for (var aid in actors) {
+      var a = actors[aid];
+      if (a.kind !== 'spine') continue;
+      out.push({ id: aid, ready: a.ready, hit: a.ready ? hitSpine(a, p) : false,
+                 boundsW: Math.round(a.boundsW), boundsH: Math.round(a.boundsH),
+                 scale_eff: (0.5 * glState.h / a.boundsH) * (a.clip.scale || 1) });
+    }
+    out.push({ hitsAt: hitsAt(p) });
+    return JSON.stringify(out);
+  },
   play: play,
   pause: pause,
   setExportMode: function (on) {
     exportMode = !!on;
     exportIdx = 0;
-    lastCapTs = 0;
+    capAcc = 0;
   },
   // Qt 拖放落点换算用：舞台在窗口中的显示矩形与缩放
   viewInfo: function () {
