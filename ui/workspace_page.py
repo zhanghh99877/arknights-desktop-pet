@@ -582,11 +582,17 @@ class WorkspacePage(QWidget):
         self._emit_change()
         self._sync_now()   # 立即推给舞台：拖入立刻看到落点（骨架加载有占位提示）
 
-    def _on_stage_moved(self, clip_id: str, x: float, y: float):
+    def _on_stage_moved(self, clip_id: str, x: float, y: float,
+                        ddx: float = 0.0, ddy: float = 0.0):
         clip = self._project.clip(clip_id) if self._project else None
         if not clip:
             return
         clip.x, clip.y = x, y
+        if clip.moves and (ddx or ddy):
+            # 拖动时活动的平移条目在 JS 侧已跟手，这里把增量落到模型
+            for m in clip.moves:
+                m.x0 += ddx; m.x1 += ddx
+                m.y0 += ddy; m.y1 += ddy
         self._emit_change()
         self._rebuild_props()   # 基准位置变了，刷新右栏
 

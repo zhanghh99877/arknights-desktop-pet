@@ -20,7 +20,7 @@ QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
 app = QApplication(sys.argv)
 
 from core.assets import RelayLibrary
-from core.workspace import WorkspaceStore
+from core.workspace import AnimEntry, Clip, WorkspaceStore
 from ui.workspace_page import WorkspacePage
 
 ROOT = WorkspaceStore().root
@@ -33,9 +33,16 @@ def fail(msg):
 
 
 store = WorkspaceStore()
-proj = store.load("_diag")   # 复用上个诊断项目（可露希尔 sp 片段在 640,600）
-if proj is None:
-    fail("先跑诊断项目 _diag")
+import shutil
+shutil.rmtree(ROOT / "_rottest", ignore_errors=True)
+proj = store.create("_rottest")
+_c = Clip(id="sp", type="spine", asset="可露希尔", start=0.0, end=5.0,
+          x=PX, y=PY)
+_c.anims.append(AnimEntry(start=0.0, end=5.0, anim="Default", loop=True))
+proj.clips.append(_c)
+proj.duration = 5.0
+store.save(proj)
+store.set_last("_rottest")
 page = WorkspacePage(RelayLibrary())
 page.resize(1400, 900)
 page.show()

@@ -18,7 +18,7 @@
 // ---------------- 桥 ----------------
 // 注意：必须按真实参数个数调用——多传 undefined 会被 QtWebChannel 序列化成
 // null，导致 Slot 参数个数不匹配而被静默丢弃（timeUpdate 曾因此永远到不了 Qt）
-function bcall(name, a, b, c, d) {
+function bcall(name, a, b, c, d, f) {
   var br = window.bridge;
   if (!br) return;
   try {
@@ -26,7 +26,8 @@ function bcall(name, a, b, c, d) {
     else if (b === undefined) br[name](a);
     else if (c === undefined) br[name](a, b);
     else if (d === undefined) br[name](a, b, c);
-    else br[name](a, b, c, d);
+    else if (f === undefined) br[name](a, b, c, d);
+    else br[name](a, b, c, d, f);
   } catch (e) { console.warn('[stage] bridge.' + name, e); }
 }
 function log(m) { console.log('[stage]', m); bcall('log', String(m)); }
@@ -139,6 +140,7 @@ function SpineActor(clip) {
   // 加载占位：骨架资源就绪前显示位置提示（拖入 Spine 立即可见落点）
   var el = document.createElement('div');
   el.className = 'ov';
+  el.dataset.clipId = clip.id;
   el.style.cssText = 'color:#888;font:12px sans-serif;cursor:move;white-space:nowrap;';
   el.textContent = '⏳ ' + (clip.name || clip.asset);
   overlay.appendChild(el);
@@ -325,6 +327,7 @@ function evalOvActor(a, t) {
   el.style.opacity = clamp01(c.opacity == null ? 1 : c.opacity);
   el.style.transform = 'translate(-50%,-50%) rotate(' + (c.rotation || 0) +
     'deg) scale(' + (c.scale || 1) + ')';
+  el.__lastRect = el.getBoundingClientRect();  // 供时间窗外点选命中
 }
 
 // ---------------- 渲染 ----------------
@@ -398,7 +401,19 @@ function renderNow() {
       if (a.el) evalPlaceholder(a, time);   // spine 加载占位
       continue;
     }
-    if (time < c.start || time >= c.end) continue;
+    if (time < c.start || time >= c.end) {
+      // 拖时间窗外的 spine：画半透明 ghost，让拖动有视觉反馈
+      if (drag && drag.id === c.id) {
+        var gt = Math.max(c.start, Math.min(time, c.end - 1e-3));
+        evalSpineActor(a, gt, H);
+        var gsk = a.skeleton;
+        if (!gsk.color) gsk.color = new spine.Color(1, 1, 1, 1);
+        gsk.color.a *= 0.55;
+        gsk.updateWorldTransform();
+        spineList.push(a);
+      }
+      continue;
+    }
     evalSpineActor(a, time, H);
     spineList.push(a);
   }
@@ -589,12 +604,13 @@ function hitSpine(a, p) {
 // 多次点击循环切换选中——重叠时 buried 对象也能选中
 function hitsAt(p) {
   var hits = [];
-  // PNG 片段（画在 #bg）：中心锚点旋转矩形命中
+  // PNG 片段（画在 #bg）：中心锚点旋转矩形命中。
+  // 不做时间窗判定——播放头在区间外也应能选中拖走（配合 ghost 预览）。
   for (var pid in actors) {
     var pa = actors[pid];
     if (!(pa.kind === 'ov' && pa.img)) continue;
     var pc = pa.clip;
-    if (!layerVisible(pc.layer) || time < pc.start || time >= pc.end) continue;
+    if (!layerVisible(pc.layer)) continue;
     var pw = pa.natW * (pc.scale || 1), phh = pa.natH * (pc.scale || 1);
     var pth = -(pc.rotation || 0) * Math.PI / 180;
     var pdx = p.x - pc.x, pdy = p.y - pc.y;
@@ -607,9 +623,13 @@ function hitsAt(p) {
   var kids = overlay.children;
   for (var i = 0; i < kids.length; i++) {
     var el = kids[i];
-    var c = clipById(el.dataset.clipId);
+    var cid = el.dataset.clipId;
+    if (!cid) continue;
+    var c = clipById(cid);
     if (!c || !layerVisible(c.layer)) continue;
+    // SVG：优先当前矩形；display:none 时用上次可见矩形（拖时间窗外的片段）
     var r = el.getBoundingClientRect();
+    if ((r.width === 0 || r.height === 0) && el.__lastRect) r = el.__lastRect;
     var orect = overlay.getBoundingClientRect();
     var k = glState.w / orect.width;
     var x0 = (r.left - orect.left) * k, y0 = (r.top - orect.top) * k;
@@ -618,9 +638,22 @@ function hitsAt(p) {
   }
   for (var aid in actors) {
     var a = actors[aid];
-    if (a.kind === 'spine' && layerVisible(a.clip.layer) && hitSpine(a, p)) {
-      hits.push(a.clip.id);
+    if (a.kind !== 'spine' || !a.ready || !layerVisible(a.clip.layer)) continue;
+    var hit;
+    if (a.lastBounds) {
+      var wx = p.x, wy = glState.h - p.y;
+      var b = a.lastBounds;
+      hit = wx >= b.x - 14 && wx <= b.x + b.w + 14 &&
+            wy >= b.y - 14 && wy <= b.y + b.h + 14;
+    } else {
+      // 从未渲染过（播放头从未进过区间）：setup 包围盒近似
+      var sc = a.clip;
+      var s0 = (0.5 * glState.h / a.boundsH) * (sc.scale || 1);
+      var w0 = a.boundsW * s0, h0 = a.boundsH * s0;
+      hit = Math.abs(p.x - sc.x) <= w0 / 2 + 14 &&
+            Math.abs(p.y - (sc.y - h0 / 2)) <= h0 / 2 + 14;
     }
+    if (hit) hits.push(a.clip.id);
   }
   // layer 小（上）优先
   hits.sort(function (x, y) {
@@ -645,7 +678,12 @@ stageBox.addEventListener('mousedown', function (e) {
   bcall('clipSelected', id);
   if (!id) return;
   var c = clipById(id);
-  drag = { id: id, sx: e.clientX, sy: e.clientY, x0: c.x, y0: c.y, moved: false };
+  // 快照 move 条目：拖动时让活动的平移条目整体跟手（否则视觉不跟：
+  // 条目插值优先于基准位置，拖了像没拖）。松手时把增量报给 Qt 落库。
+  drag = { id: id, sx: e.clientX, sy: e.clientY, x0: c.x, y0: c.y, moved: false,
+           moves: c.moves && c.moves.length
+                  ? c.moves.map(function (m) { return Object.assign({}, m); })
+                  : null };
   e.preventDefault();
 });
 document.addEventListener('mousemove', function (e) {
@@ -655,10 +693,17 @@ document.addEventListener('mousemove', function (e) {
   drag.moved = true;
   var r = overlay.getBoundingClientRect();
   var k = glState.w / r.width;
+  var ddx = dx * k, ddy = dy * k;
   var c = clipById(drag.id);
   if (!c) { drag = null; return; }
-  c.x = Math.round(drag.x0 + dx * k);
-  c.y = Math.round(drag.y0 + dy * k);
+  c.x = Math.round(drag.x0 + ddx);
+  c.y = Math.round(drag.y0 + ddy);
+  if (drag.moves) {
+    c.moves = drag.moves.map(function (m) {
+      return Object.assign({}, m,
+        { x0: m.x0 + ddx, y0: m.y0 + ddy, x1: m.x1 + ddx, y1: m.y1 + ddy });
+    });
+  }
   renderNow();  // 拖动期间 JS 自渲染，不回流 Qt（mouseup 才报）
 });
 document.addEventListener('mouseup', function () {
@@ -666,7 +711,11 @@ document.addEventListener('mouseup', function () {
   var d = drag; drag = null;
   if (d.moved) {
     var c = clipById(d.id);
-    if (c) bcall('clipMoved', d.id, c.x, c.y);
+    if (c) {
+      bcall('clipMoved', d.id, c.x, c.y,
+            Math.round((c.x - d.x0) * 10) / 10,
+            Math.round((c.y - d.y0) * 10) / 10);
+    }
   }
 });
 
