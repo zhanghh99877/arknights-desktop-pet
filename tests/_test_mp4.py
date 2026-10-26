@@ -110,8 +110,8 @@ def verify(out):
     print(f"  尺寸: {dims[0]}x{dims[1]}  帧数: {frames}")
     if dims != ("480", "480"):
         fail(f"尺寸不是 480x480: {dims}")
-    if frames < 20:
-        fail(f"帧数太少: {frames}")
+    if frames < 60:
+        fail(f"帧数不足 60: {frames}")
     if "h264" not in info:
         fail("不是 h264 编码")
     state["results"].append((p.name, size, frames))

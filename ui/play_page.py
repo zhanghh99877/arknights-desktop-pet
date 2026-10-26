@@ -35,7 +35,8 @@ from core.pet_player import PetPlayer
 from ui.widgets import NoWheelComboBox
 
 _PROC_PREFIX = "✨ "
-_MP4_FPS = 20              # 视频走硬件解码，20fps 丝滑
+_MP4_FPS = 30              # 视频走硬件解码，30fps 动作顺滑
+_MP4_MIN_FRAMES = 60       # 至少 60 帧：短动作循环取样补足
 _MP4_PROC_SECONDS = 3.0    # 程序动作录 3 秒
 _MP4_MAX_SECONDS = 3.5     # 官方动作最多录 3.5 秒
 _MP4_SIDE = 480            # 方形边长（H.264 要求偶数，480 安全）
@@ -135,6 +136,7 @@ class PlayPage(QWidget):
         self._mp4_is_proc = False
         self._mp4_path = ""
         self._mp4_frames: list[bytes] = []  # 抓取的原始帧（处理后编码）
+        self._mp4_anim_dur = 0.0            # 官方动作时长（循环取样用）
 
         # ---- 左侧：模型 + 动作列表 ----
         controls = QGroupBox("播放")
@@ -288,10 +290,13 @@ class PlayPage(QWidget):
         except (TypeError, ValueError):
             seconds = 0.0
         seconds = min(seconds if seconds > 0 else 1.0, _MP4_MAX_SECONDS)
+        self._mp4_anim_dur = seconds   # 短动作循环取样补足帧数用
         self._begin_mp4_capture(seconds)
 
     def _begin_mp4_capture(self, seconds: float):
-        self._mp4_expected = max(1, int(round(seconds * _MP4_FPS)))
+        # 至少 _MP4_MIN_FRAMES 帧：不足时按循环取样补（render 端取模）
+        self._mp4_expected = max(_MP4_MIN_FRAMES,
+                                 int(round(seconds * _MP4_FPS)))
         self._set_mp4_controls_enabled(False)
         self._mp4_progress = QProgressDialog(
             f"正在导出 {self._mp4_name} …", "取消", 0, self._mp4_expected, self)
@@ -305,6 +310,8 @@ class PlayPage(QWidget):
         if not self._mp4_expected:
             return
         t = len(self._mp4_frames) / _MP4_FPS
+        if not self._mp4_is_proc and getattr(self, "_mp4_anim_dur", 0) > 0:
+            t = t % self._mp4_anim_dur   # 循环取样：短动作补足帧数
         if self._mp4_is_proc:
             self.preview.render_pose(proc=self._mp4_name, t=t, fps=_MP4_FPS,
                                      callback=self._on_gif_frame_rendered)
