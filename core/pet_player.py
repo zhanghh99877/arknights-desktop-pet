@@ -36,13 +36,15 @@ _PROCS_RUNTIME_JS = """
 window.PROCS = window.PROCS || {};
 window.__procName = null;
 window.__procT = 0;
+window.__procDt = 1 / 60;
 window.__fxIds = [];
 
 /* 切换程序动作；name 为空 = 关闭程序层（保留当前官方动作）。
  * 切换时 setToSetupPose：官方动画每帧会重写带关键帧的骨骼，复位到
  * setup 姿势只清掉程序层留在无关键帧骨骼上的残留（如 scaleY 压扁）。 */
-window.setProc = function(name) {
+window.setProc = function(name, loop) {
   name = name || null;
+  loop = loop !== false;
   if (name === window.__procName) return;
   window.__procName = name;
   window.__procT = 0;
@@ -55,7 +57,7 @@ window.setProc = function(name) {
   if (def && def.base) {
     try {
       if (p.skeleton.data.findAnimation(def.base))
-        p.animationState.setAnimation(0, def.base, true);
+        p.animationState.setAnimation(0, def.base, loop);
     } catch (e) {}
   }
 };
@@ -103,7 +105,7 @@ _PROC_HOOK_JS = """
           _origApply(sk);
           var name = window.__procName;
           if (name && window.PROCS && window.PROCS[name]) {
-            window.__procT += 1 / 60;
+            window.__procT += window.__procDt || 1 / 60;
             try { window.PROCS[name].pose(sk, window.__procT, window.procFx); } catch (e) {}
           }
         };"""
@@ -217,8 +219,13 @@ _SPINE_HTML = """<!DOCTYPE html>
         player.animationState.data.defaultMix = {mix};
         // 非循环动画播完 → 通知 Qt 切回默认
         player.animationState.addListener({{ complete: function (entry) {{
-          if (!entry.loop && window.bridge)
-            window.bridge.animComplete(entry.animation.name);
+          if (entry.loop || !window.bridge) return;
+          var reported = entry.animation.name;
+          var procName = window.__procName;
+          if (procName && window.PROCS[procName] &&
+              window.PROCS[procName].base === reported)
+            reported = procName;
+          window.bridge.animComplete(reported);
         }} }});
         // 取景框 = 全部已配置动作包围盒的并集（封顶 fit 动作的 5 倍），
         // 之后切换动作不再重算：模型大小恒定，大动作也播得下。
@@ -257,7 +264,9 @@ _SPINE_HTML = """<!DOCTYPE html>
         // 首个动作（如启动）必须最后设置：
         // calculateAnimationViewport 内部会 clearTracks()，先设会被并集计算清掉
         var anim = '{animation}';
-        if (anim) player.animationState.setAnimation(0, anim, {loop});
+        var procAnim = {proc_animation};
+        if (procAnim) window.setProc(procAnim, {loop});
+        else if (anim) player.animationState.setAnimation(0, anim, {loop});
         // 显示缩放：view_scale=0.5 → 取景框以中心放大一倍，动画显示为一半
         var vs = {view_scale};
         if (vs > 0 && vs !== 1 && player.currentViewport) {{
@@ -371,9 +380,10 @@ class PetPlayer(QWebEngineView):
                    procs: dict | None = None):
         """整套加载 spine 骨架（切模型时用）。
 
-        animation 为首个播放的骨架内动画名；fit 为取景参照动作
-        （取景框只在加载时计算一次，之后切换动作不再重算，
-        保证模型显示大小恒定）。fit 缺省取 animation。
+        animation 为首个播放的骨架内动画名；传入了 procs 且 animation
+        是程序动作名时，会先进入其 base 官方动作再叠加程序层。
+        fit 为取景参照动作（取景框只在加载时计算一次，之后切换动作不再
+        重算，保证模型显示大小恒定），必须是官方动画名。
         fit_all：参与取景并集的全部动作名（缺省只有 fit）。
         并集尺寸封顶为 fit 包围盒的 5 倍，防止离谱动作把主体缩太小。
         viewport：缓存的并集取景框（由 viewportComputed 信号回传后落库），
@@ -383,12 +393,16 @@ class PetPlayer(QWebEngineView):
         .js 文件内容），注入后可用 set_proc() 在官方动作之上叠加播放。
         """
         import json
+        initial_proc = animation if procs and animation in procs else ""
+        initial_anim = "" if initial_proc else animation
         self._set_bg()
         self.setHtml(
             _SPINE_HTML.format(
                 vendor=VENDOR.as_uri(), bg=self._background,
-                skel=skel.as_uri(), atlas=atlas.as_uri(), animation=animation,
-                fit=fit or animation,
+                skel=skel.as_uri(), atlas=atlas.as_uri(),
+                animation=initial_anim,
+                proc_animation=json.dumps(initial_proc),
+                fit=fit or initial_anim,
                 loop='true' if loop else 'false',
                 view_scale=view_scale,
                 fit_all=json.dumps(list(fit_all)),
@@ -411,12 +425,68 @@ class PetPlayer(QWebEngineView):
             f".setAnimation(0, '{safe}', {'true' if loop else 'false'});"
         )
 
-    def set_proc(self, name: str):
+    def set_proc(self, name: str, loop: bool = True):
         """切换到自创程序动作（页面需带 procs 加载）；空名关闭程序层。"""
         safe = name.replace("\\", "\\\\").replace("'", "\\'")
         self.page().runJavaScript(
-            f"window.setProc && window.setProc('{safe}');"
+            f"window.setProc && window.setProc('{safe}', "
+            f"{'true' if loop else 'false'});"
         )
+
+    def render_pose(self, animation: str = "", proc: str = "", t: float = 0.0,
+                    fps: int = 25, callback=None):
+        """确定性渲染一帧：暂停实时循环，把官方/程序动作推到 t 秒后重绘。"""
+        import json
+        anim_json = json.dumps(animation or "")
+        proc_json = json.dumps(proc or "")
+        dt = 1.0 / max(1, int(fps))
+        js = f"""
+        (function() {{
+          var p = window.player;
+          if (!p || !p.loaded) return false;
+          p.pause();
+          window.__procDt = {dt};
+          if ({proc_json}) {{
+            window.__procName = null;
+            window.setProc({proc_json}, false);
+            p.animationState.update({float(t)});
+            window.__procT = {float(t)};
+          }} else {{
+            window.setProc && window.setProc(null);
+            p.animationState.clearTracks();
+            p.skeleton.setToSetupPose();
+            p.animationState.setAnimation(0, {anim_json}, false);
+            p.animationState.update({float(t)});
+          }}
+          p.animationState.apply(p.skeleton);
+          p.skeleton.updateWorldTransform();
+          p.drawFrame(false);
+          return true;
+        }})()
+        """
+        self.page().runJavaScript(js, callback)
+
+    def grab_canvas_png(self, callback):
+        """从页面 WebGL 画布抓当前帧 PNG（dataURL 字符串回传）。
+
+        QWebEngineView.grab() 抓 WebGL 内容不可靠（常出空白/残影），
+        必须在页面内 drawImage 读回（vendor 补丁 preserveDrawingBuffer）。
+        """
+        js = """
+        (function() {
+          var host = document.getElementById('player');
+          var c = host ? host.querySelector('canvas') : document.querySelector('canvas');
+          if (!c || !window.player || !window.player.loaded) return null;
+          var off = document.createElement('canvas');
+          off.width = c.width; off.height = c.height;
+          var ctx = off.getContext('2d');
+          ctx.drawImage(c, 0, 0);
+          try { return off.toDataURL('image/png'); }
+          catch (e) { return null; }
+        })()
+        """
+        self.page().runJavaScript(js, callback)
+        self.page().runJavaScript(js, callback)
 
     def stop(self):
         self.setHtml("<html><body style='background:transparent'></body></html>")

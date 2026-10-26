@@ -90,10 +90,12 @@ def check1(before):
 
 
 def t2_pan():
-    tl._pps = 400.0          # 放大到内容超出视口，平移才有意义
+    tl._pps = 600.0          # 放大到内容超出视口，平移才有意义
     tl._relayout()
-    tl._clamp_xoff()
-    xoff0 = tl._xoff
+    page._update_timeline_width()
+    QApplication.processEvents()
+    sb = page.timeline_scroll.horizontalScrollBar()
+    xoff0 = sb.value()
     # 空白区域（片段右侧远点）左右拖
     y = tl._row_tops[1] + 8   # 第 2 行（空行）
     x = tl._x(1.5)
@@ -108,8 +110,9 @@ def t2_pan():
 
 
 def check2(xoff0):
-    print(f"② 横向平移：_xoff {xoff0} -> {tl._xoff}")
-    if tl._xoff <= xoff0 + 50:
+    value = page.timeline_scroll.horizontalScrollBar().value()
+    print(f"② 横向平移：滚动条 {xoff0} -> {value}")
+    if value <= xoff0 + 50:
         fail("空区域拖动没有平移时间轴视图")
     print("② 时间轴横向平移 ✓")
     t3_switch()

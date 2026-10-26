@@ -149,8 +149,12 @@ class StageView(QWebEngineView):
         self.page().runJavaScript(code)
 
     def sync_project(self, project: dict, library: RelayLibrary,
-                     assets_base: str):
-        """全量同步文档模型（canvas/duration/layers/clips/spine/assets）。"""
+                     assets_base: str, assets_rev: str = ""):
+        """全量同步文档模型（canvas/duration/layers/clips/spine/assets）。
+
+        assets_rev 进素材 URL 的 ?v= ——QtWebEngine 缓存 file:// 响应，
+        项目重新生成后必须换版本号才会拉新素材。
+        """
         payload = {
             "canvas": project["canvas"],
             "duration": project["duration"],
@@ -160,6 +164,7 @@ class StageView(QWebEngineView):
             "spine": spine_lib(library, project["clips"]),
             "procs": procs_lib(library, project["clips"]),
             "assets": assets_base,
+            "assetsRev": assets_rev,
         }
         js = "stageApi.loadProject(" + json.dumps(payload, ensure_ascii=False) + ")"
         self._js(js)
@@ -179,3 +184,11 @@ class StageView(QWebEngineView):
 
     def set_export_mode(self, on: bool):
         self._js(f"stageApi.setExportMode({'true' if on else 'false'})")
+
+    def export_begin(self):
+        """步进导出：重置帧计数（时间=帧序/fps，由 export_next 逐帧推进）。"""
+        self._js("stageApi.exportBegin()")
+
+    def export_next(self):
+        """步进一帧并抓取；帧经 exportFrame 信号回传后再调下一步。"""
+        self._js("stageApi.exportNext()")

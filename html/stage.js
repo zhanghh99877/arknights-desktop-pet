@@ -42,6 +42,25 @@ function pickEntry(list, t) {
   }
   return null;
 }
+// move 条目求值（spine/png/svg 通用）：命中 → 线性插值；首条目之前 →
+// 其起点；条目间/全部结束 → 冻结在最近已开始条目的终点（不提前跳位置）
+function evalMove(c, t) {
+  var ms = c.moves;
+  if (!ms || !ms.length) return { x: c.x, y: c.y, rot: c.rotation || 0 };
+  var arr = ms.slice().sort(function (a, b) { return a.start - b.start; });
+  if (t < arr[0].start) {
+    return { x: arr[0].x0, y: arr[0].y0, rot: arr[0].rot0 || 0 };
+  }
+  for (var i = arr.length - 1; i >= 0; i--) {
+    var m = arr[i];
+    if (t < m.start) continue;
+    if (t >= m.end) return { x: m.x1, y: m.y1, rot: m.rot1 || 0 };
+    var k = clamp01((t - m.start) / Math.max(1e-6, m.end - m.start));
+    return { x: lerp(m.x0, m.x1, k), y: lerp(m.y0, m.y1, k),
+             rot: lerp(m.rot0 || 0, m.rot1 || 0, k) };
+  }
+  return { x: c.x, y: c.y, rot: c.rotation || 0 };
+}
 
 // ---------------- DOM ----------------
 var stageBox = document.getElementById('stage');
@@ -49,9 +68,15 @@ var bgCanvas = document.getElementById('bg');
 var bgCtx = bgCanvas.getContext('2d');
 var glCanvas = document.getElementById('gl');
 var overlay = document.getElementById('overlay');
+// 顶层世界（负数图层 = 压住一切基础层）
+var bgTopCanvas = document.getElementById('bgTop');
+var bgTopCtx = bgTopCanvas.getContext('2d');
+var glTopCanvas = document.getElementById('glTop');
+var overlayTop = document.getElementById('overlayTop');
 
 // ---------------- GL ----------------
 var context = null, sceneRenderer = null, assetManager = null;
+var contextTop = null, sceneRendererTop = null, assetManagerTop = null;
 function initGL() {
   if (context) return true;
   try {
@@ -60,6 +85,13 @@ function initGL() {
     });
     sceneRenderer = new spine.webgl.SceneRenderer(glCanvas, context, true);
     assetManager = new spine.webgl.AssetManager(context);
+    // 顶层世界用独立 WebGL 上下文（纹理不跨上下文，负图层骨架独立加载）
+    contextTop = new spine.webgl.ManagedWebGLRenderingContext(glTopCanvas, {
+      alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: true,
+    });
+    sceneRendererTop = new spine.webgl.SceneRenderer(glTopCanvas, contextTop,
+                                                     true);
+    assetManagerTop = new spine.webgl.AssetManager(contextTop);
     return true;
   } catch (e) { log('WebGL 初始化失败: ' + e); return false; }
 }
@@ -70,26 +102,31 @@ var actors = {};               // clipId -> actor
 var duration = 5;
 var glState = { w: 1280, h: 720, bg: '#ffffff' };
 
-// 骨架数据缓存：asset -> {status:'loading'|'ok'|'err', data, anchor, boundsW, boundsH}
+// 骨架数据缓存：asset -> {status,data,anchor,boundsW,boundsH}。
+// 基础世界与顶层世界各自一份（WebGL 纹理不跨上下文共享）
 var skelLib = {};
+var skelLibTop = {};
 
 // ---------------- 骨架数据加载 ----------------
-function ensureSkeletonData(asset, info) {
-  var e = skelLib[asset];
+function ensureSkeletonData(asset, info, top) {
+  var cache = top ? skelLibTop : skelLib;
+  var am = top ? assetManagerTop : assetManager;
+  var e = cache[asset];
   if (e) return e;
   e = { status: 'loading', data: null, anchor: null, boundsW: 100, boundsH: 100 };
-  skelLib[asset] = e;
+  cache[asset] = e;
   try {
-    assetManager.loadBinary(info.skel);
-    assetManager.loadTextureAtlas(info.atlas);
+    am.loadBinary(info.skel);
+    am.loadTextureAtlas(info.atlas);
   } catch (err) { e.status = 'err'; log('骨架加载发起失败 ' + asset + ': ' + err); }
   return e;
 }
 
-function finalizeSkeletonData(asset, e) {
+function finalizeSkeletonData(asset, e, top) {
   try {
-    var atlas = assetManager.get(model.spine[asset].atlas);
-    var binary = assetManager.get(model.spine[asset].skel);
+    var am = top ? assetManagerTop : assetManager;
+    var atlas = am.get(model.spine[asset].atlas);
+    var binary = am.get(model.spine[asset].skel);
     var data = new spine.SkeletonBinary(new spine.AtlasAttachmentLoader(atlas))
       .readSkeletonData(binary);
     e.data = data;
@@ -105,20 +142,27 @@ var readySent = false;
 setInterval(function () {
   if (!assetManager || !model) return;
   var loading = false;
-  for (var asset in skelLib) {
-    var e = skelLib[asset];
-    if (e.status === 'loading') {
-      loading = true;
-      if (assetManager.hasErrors()) {
-        e.status = 'err';
-        log('骨架资源加载出错 ' + asset + ': ' +
-            JSON.stringify(assetManager.getErrors()));
+  var worlds = [[skelLib, assetManager], [skelLibTop, assetManagerTop]];
+  for (var wi = 0; wi < worlds.length; wi++) {
+    var cache = worlds[wi][0], am = worlds[wi][1];
+    for (var asset in cache) {
+      var e = cache[asset];
+      if (e.status === 'loading') {
+        loading = true;
+        if (am.hasErrors()) {
+          e.status = 'err';
+          log('骨架资源加载出错 ' + asset + ': ' +
+              JSON.stringify(am.getErrors()));
+        }
       }
     }
   }
-  if (assetManager.isLoadingComplete()) {
+  if (assetManager.isLoadingComplete() && assetManagerTop.isLoadingComplete()) {
     for (asset in skelLib) {
-      if (skelLib[asset].status === 'loading') finalizeSkeletonData(asset, skelLib[asset]);
+      if (skelLib[asset].status === 'loading') finalizeSkeletonData(asset, skelLib[asset], false);
+    }
+    for (asset in skelLibTop) {
+      if (skelLibTop[asset].status === 'loading') finalizeSkeletonData(asset, skelLibTop[asset], true);
     }
     instantiatePending();
   }
@@ -129,6 +173,7 @@ setInterval(function () {
 function SpineActor(clip) {
   this.kind = 'spine';
   this.clip = clip;
+  this.top = clip.layer < 0;            // 顶层世界（负图层）
   this.ready = false;
   this.skeleton = null;
   this.state = null;
@@ -143,7 +188,7 @@ function SpineActor(clip) {
   el.dataset.clipId = clip.id;
   el.style.cssText = 'color:#888;font:12px sans-serif;cursor:move;white-space:nowrap;';
   el.textContent = '⏳ ' + (clip.name || clip.asset);
-  overlay.appendChild(el);
+  (this.top ? overlayTop : overlay).appendChild(el);
   this.el = el;
 }
 SpineActor.prototype.instantiate = function (e) {
@@ -175,8 +220,14 @@ SpineActor.prototype.instantiate = function (e) {
 function OvActor(clip, assetsBase) {
   this.kind = 'ov';
   this.clip = clip;
+  this.top = clip.layer < 0;            // 顶层世界（负图层）
   this.img = null;
   this.natW = 200; this.natH = 200;   // 图片未加载前的占位尺寸
+  var host = this.top ? overlayTop : overlay;
+  // 素材 URL 带版本参数：QtWebEngine 会缓存 file:// 响应，重新生成
+  // 项目后同路径文件内容变了但缓存仍回旧版（画布整体拿旧素材）
+  var url = assetsBase + encodeURIComponent(clip.asset) +
+    (model.assetsRev ? '?v=' + model.assetsRev : '');
   if (clip.type === 'png') {
     // PNG 画进底层 #bg 2D 画布（可垫在 spine 下面）；不走 DOM
     var img = new Image();
@@ -186,7 +237,7 @@ function OvActor(clip, assetsBase) {
       self.natH = img.naturalHeight || 200;
       renderNow();
     };
-    img.src = assetsBase + encodeURIComponent(clip.asset);
+    img.src = url;
     this.img = img;
     this.el = null;
   } else { // svg：内联 DOM，SMIL/CSS 动画才会动；DOM 层永远在最上
@@ -196,25 +247,32 @@ function OvActor(clip, assetsBase) {
     this.el = el;
     var wrap = document.createElement('div');
     el.appendChild(wrap);
-    fetch(assetsBase + encodeURIComponent(clip.asset))
+    fetch(url)
       .then(function (r) { return r.text(); })
       .then(function (txt) { wrap.innerHTML = txt; })
       .catch(function (e) { log('SVG 加载失败 ' + clip.asset + ': ' + e); });
-    overlay.appendChild(el);
+    host.appendChild(el);
   }
 }
 
-// PNG 片段：画进底层背景画布（底色之下无物，spine 之下）
-function evalPngActor(a, t) {
+// PNG 片段：画进对应世界的 2D 画布（正图层 #bg / 负图层 #bgTop）
+function evalPngActor(a, t, ghost, ctx) {
   var c = a.clip;
-  if (!layerVisible(c.layer) || t < c.start || t >= c.end || !a.img) return;
+  if (!layerVisible(c.layer) || !a.img) return;
+  if (t < c.start || t >= c.end) {
+    // 时间窗外只有拖动 ghost 预览（夹到窗内求值，半透明跟手）
+    if (!ghost) return;
+    t = Math.max(c.start, Math.min(t, c.end - 1e-3));
+  }
+  var mv = evalMove(c, t);
   var w = a.natW * (c.scale || 1), h = a.natH * (c.scale || 1);
-  bgCtx.save();
-  bgCtx.translate(c.x, c.y);
-  bgCtx.rotate((c.rotation || 0) * Math.PI / 180);
-  bgCtx.globalAlpha = clamp01(c.opacity == null ? 1 : c.opacity);
-  try { bgCtx.drawImage(a.img, -w / 2, -h / 2, w, h); } catch (e) {}
-  bgCtx.restore();
+  ctx.save();
+  ctx.translate(mv.x, mv.y);
+  ctx.rotate(mv.rot * Math.PI / 180);
+  ctx.globalAlpha = clamp01(c.opacity == null ? 1 : c.opacity) *
+    (ghost ? 0.55 : 1);
+  try { ctx.drawImage(a.img, -w / 2, -h / 2, w, h); } catch (e) {}
+  ctx.restore();
 }
 
 function createActor(clip) {
@@ -227,7 +285,7 @@ function instantiatePending() {
   for (var id in actors) {
     var a = actors[id];
     if (a.kind === 'spine' && a.pending) {
-      var e = skelLib[a.clip.asset];
+      var e = (a.clip.layer < 0 ? skelLibTop : skelLib)[a.clip.asset];
       if (e && e.status === 'ok') { a.instantiate(e); changed = true; }
       else if (e && e.status === 'err') { a.pending = false; }
     }
@@ -236,28 +294,21 @@ function instantiatePending() {
 }
 
 // ---------------- 求值 ----------------
-// spine 片段在 t 时刻：move 条目插值 / 夹取，anim 条目 trackTime 直写
+// spine 片段在 t 时刻：move 条目走通用 evalMove，anim 条目 trackTime 直写
 function evalSpineActor(a, t, H) {
   var c = a.clip;
-  var ms = c.moves || [];
-  var px = c.x, py = c.y, rot = c.rotation || 0;
-  if (ms.length) {
-    var m = pickEntry(ms, t);
-    if (m) {
-      var k = clamp01((t - m.start) / Math.max(1e-6, m.end - m.start));
-      px = lerp(m.x0, m.x1, k); py = lerp(m.y0, m.y1, k);
-      rot = lerp(m.rot0 || 0, m.rot1 || 0, k);
-    } else if (t < ms[0].start) {
-      px = ms[0].x0; py = ms[0].y0; rot = ms[0].rot0 || 0;
-    } else {
-      var last = ms[ms.length - 1];
-      px = last.x1; py = last.y1; rot = last.rot1 || 0;
-    }
-  }
-  // clip.scale 为倍率：1.0 = 角色高 画布半高（按 setup 包围盒归一）
-  var s = (0.5 * H / a.boundsH) * (c.scale || 1);
+  var mv = evalMove(c, t);
+  var px = mv.x, py = mv.y, rot = mv.rot;
+  // 朝向先行：当前动作条目的 flip 决定水平镜像（"转身"）
+  var ae = pickEntry(c.anims || [], t);
+  a.curFlip = !!(ae && ae.flip);
+  // clip.scale 为倍率：1.0 = 角色高 画布半高（按 setup 包围盒归一）；
+  // 负值 = 静态水平镜像；AnimEntry.flip 在其之上按段切换（转身）
+  var s = (0.5 * H / a.boundsH) * Math.abs(c.scale || 1);
   var sk = a.skeleton;
-  sk.scaleX = s; sk.scaleY = s;
+  var flip = (a.curFlip !== ((c.scale || 1) < 0)) ? -1 : 1;
+  sk.scaleX = s * flip;
+  sk.scaleY = Math.abs(s);
   if (!sk.color) sk.color = new spine.Color(1, 1, 1, 1);
   sk.color.a = clamp01(c.opacity == null ? 1 : c.opacity);
 
@@ -334,17 +385,22 @@ function evalPlaceholder(a, t) {
   a.el.style.transform = 'translate(-50%,-100%)';
 }
 
-function evalOvActor(a, t) {
+function evalOvActor(a, t, ghost) {
   if (!a.el) return;   // PNG 走 #bg 画布，无 DOM
   var c = a.clip;
-  var visible = t >= c.start && t < c.end;
+  if (!layerVisible(c.layer)) { a.el.style.display = 'none'; return; }
+  if (t < c.start || t >= c.end) {
+    if (!ghost) { a.el.style.display = 'none'; return; }
+    t = Math.max(c.start, Math.min(t, c.end - 1e-3));   // 拖动 ghost 预览
+  }
+  var mv = evalMove(c, t);
   var el = a.el;
-  el.style.display = visible ? 'block' : 'none';
-  if (!visible) return;
-  el.style.left = c.x + 'px';
-  el.style.top = c.y + 'px';
-  el.style.opacity = clamp01(c.opacity == null ? 1 : c.opacity);
-  el.style.transform = 'translate(-50%,-50%) rotate(' + (c.rotation || 0) +
+  el.style.display = 'block';
+  el.style.left = mv.x + 'px';
+  el.style.top = mv.y + 'px';
+  el.style.opacity = clamp01(c.opacity == null ? 1 : c.opacity) *
+    (ghost ? 0.55 : 1);
+  el.style.transform = 'translate(-50%,-50%) rotate(' + mv.rot +
     'deg) scale(' + (c.scale || 1) + ')';
   el.__lastRect = el.getBoundingClientRect();  // 供时间窗外点选命中
 }
@@ -364,9 +420,16 @@ function resizeStage() {
   bgCanvas.style.height = dh + 'px';
   glCanvas.style.width = dw + 'px';
   glCanvas.style.height = dh + 'px';
+  bgTopCanvas.style.width = dw + 'px';
+  bgTopCanvas.style.height = dh + 'px';
+  glTopCanvas.style.width = dw + 'px';
+  glTopCanvas.style.height = dh + 'px';
   overlay.style.width = glState.w + 'px';
   overlay.style.height = glState.h + 'px';
   overlay.style.transform = 'scale(' + (dw / glState.w) + ')';
+  overlayTop.style.width = glState.w + 'px';
+  overlayTop.style.height = glState.h + 'px';
+  overlayTop.style.transform = 'scale(' + (dw / glState.w) + ')';
 }
 window.addEventListener('resize', resizeStage);
 
@@ -377,20 +440,37 @@ function renderNow() {
   if (glCanvas.height !== H) glCanvas.height = H;
   if (bgCanvas.width !== W) bgCanvas.width = W;
   if (bgCanvas.height !== H) bgCanvas.height = H;
+  if (glTopCanvas.width !== W) glTopCanvas.width = W;
+  if (glTopCanvas.height !== H) glTopCanvas.height = H;
+  if (bgTopCanvas.width !== W) bgTopCanvas.width = W;
+  if (bgTopCanvas.height !== H) bgTopCanvas.height = H;
   glCanvas.style.background = 'transparent';
+  glTopCanvas.style.background = 'transparent';
   var bg = glState.bg || '#ffffff';
   bgCanvas.style.background = bg;
   bgCtx.fillStyle = bg;
   bgCtx.fillRect(0, 0, W, H);
+  bgTopCtx.clearRect(0, 0, W, H);
 
-  // 1) 底层：PNG 片段（layer 大先画，小的后画在上）
-  var pngs = [];
+  // 1) 基础底层：正图层 PNG（layer 大先画，小的后画在上）；
+  //    负图层 PNG 进顶层世界（更少负的先画，更多负的在后=更上）
+  var pngsPos = [], pngsNeg = [];
   for (var id in actors) {
     var pa = actors[id];
-    if (pa.kind === 'ov' && pa.img) pngs.push(pa);
+    if (pa.kind === 'ov' && pa.img) {
+      (pa.clip.layer < 0 ? pngsNeg : pngsPos).push(pa);
+    }
   }
-  pngs.sort(function (x, y) { return y.clip.layer - x.clip.layer; });
-  for (var pi = 0; pi < pngs.length; pi++) evalPngActor(pngs[pi], time);
+  pngsPos.sort(function (x, y) { return y.clip.layer - x.clip.layer; });
+  pngsNeg.sort(function (x, y) { return x.clip.layer - y.clip.layer; });
+  for (var pi = 0; pi < pngsPos.length; pi++) {
+    evalPngActor(pngsPos[pi], time, drag && drag.id === pngsPos[pi].clip.id,
+                 bgCtx);
+  }
+  for (pi = 0; pi < pngsNeg.length; pi++) {
+    evalPngActor(pngsNeg[pi], time, drag && drag.id === pngsNeg[pi].clip.id,
+                 bgTopCtx);
+  }
 
   // 2) 中层：spine（GL 透明底）
   var gl = context.gl;
@@ -403,13 +483,13 @@ function renderNow() {
   cam.position.set(W / 2, H / 2, 0);
   cam.zoom = 1;
 
-  // 3) 顶层：SVG/HTML DOM（evalOvActor 内部处理存在区间与隐藏）
-  var spineList = [];
+  // 3) DOM/SVG 与 spine 求值：正图层走基础层，负图层走顶层世界
+  var spineList = [], spineTopList = [];
   for (id in actors) {
     var a = actors[id];
     var c = a.clip;
     if (a.kind === 'ov') {
-      if (a.el) evalOvActor(a, time);
+      if (a.el) evalOvActor(a, time, drag && drag.id === c.id);
       continue;
     }
     if (!layerVisible(c.layer)) {
@@ -431,21 +511,40 @@ function renderNow() {
         if (!gsk.color) gsk.color = new spine.Color(1, 1, 1, 1);
         gsk.color.a *= 0.55;
         gsk.updateWorldTransform();
-        spineList.push(a);
+        (a.clip.layer < 0 ? spineTopList : spineList).push(a);
       }
       continue;
     }
     evalSpineActor(a, time, H);
-    spineList.push(a);
+    (a.clip.layer < 0 ? spineTopList : spineList).push(a);
   }
-  // 绘制顺序：layer 大（下层）先画，layer 小（上层）后画
+  // 绘制顺序：layer 大（下层）先画，layer 小（上层）后画；
+  // 顶层世界内更少负的先画、更多负的在后=更上
   spineList.sort(function (x, y) { return y.clip.layer - x.clip.layer; });
+  spineTopList.sort(function (x, y) { return x.clip.layer - y.clip.layer; });
   if (spineList.length) {
     sceneRenderer.begin();
     for (var i = 0; i < spineList.length; i++) {
       sceneRenderer.drawSkeleton(spineList[i].skeleton, true);
     }
     sceneRenderer.end();
+  }
+
+  // 4) 顶层世界：负图层 PNG 画布 + 负图层 spine（压住一切基础层）
+  var glT = contextTop.gl;
+  glT.viewport(0, 0, W, H);
+  glT.clearColor(0, 0, 0, 0);
+  glT.clear(glT.COLOR_BUFFER_BIT);
+  var camT = sceneRendererTop.camera;
+  camT.viewportWidth = W; camT.viewportHeight = H;
+  camT.position.set(W / 2, H / 2, 0);
+  camT.zoom = 1;
+  if (spineTopList.length) {
+    sceneRendererTop.begin();
+    for (i = 0; i < spineTopList.length; i++) {
+      sceneRendererTop.drawSkeleton(spineTopList[i].skeleton, true);
+    }
+    sceneRendererTop.end();
   }
 }
 
@@ -521,50 +620,71 @@ function captureFrame() {
   if (compCanvas.width !== W) compCanvas.width = W;
   if (compCanvas.height !== H) compCanvas.height = H;
   var ctx = compCtx;
-  // 合成顺序与预览一致：底层 #bg（底色+PNG）→ 中层 WebGL（spine）→ 顶层 SVG DOM
+  // 合成顺序与预览一致：#bg（底色+正PNG）→ #gl（正spine）→ 正SVG DOM →
+  // 顶层世界 #bgTop（负PNG）→ #glTop（负spine）→ 负SVG DOM
   ctx.clearRect(0, 0, W, H);
   try { ctx.drawImage(bgCanvas, 0, 0); } catch (e) {}
   try { ctx.drawImage(glCanvas, 0, 0); } catch (e) {}
 
   var rect = stageBox.getBoundingClientRect();
   var k = W / rect.width;
-  var svgActors = [];
-  var kids = overlay.children;
-  for (var i = 0; i < kids.length; i++) {
-    if (kids[i].style.display === 'none') continue;
-    var a = actors[kids[i].dataset.clipId];
-    if (a && a.el) svgActors.push(a);   // 现在只剩 SVG/HTML
-  }
   // SVG：foreignObject + 计算样式内联（SMIL/CSS 动画取当前帧计算值）
   var finish = function () {
     // JPEG：编码快、传输小（PNG 一帧 0.3~1MB，WebChannel 传不动）
     bcall('exportFrame', compCanvas.toDataURL('image/jpeg', 0.92), exportIdx++);
   };
-  if (!svgActors.length) { finish(); return; }
-  var parts = [];
-  for (i = 0; i < svgActors.length; i++) {
-    var a3 = svgActors[i], r3 = a3.el.getBoundingClientRect();
-    try {
-      var clone = a3.el.cloneNode(true);
-      inlineStyles(a3.el, clone);
-      var xml = new XMLSerializer().serializeToString(clone);
-      parts.push('<div xmlns="http://www.w3.org/1999/xhtml" style="position:absolute;left:' +
-        ((r3.left - rect.left) * k) + 'px;top:' + ((r3.top - rect.top) * k) +
-        'px;width:' + (r3.width * k) + 'px;height:' + (r3.height * k) + 'px;">' +
-        xml + '</div>');
-    } catch (e) { log('SVG 序列化失败: ' + e); }
-  }
-  if (!parts.length) { finish(); return; }
-  var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H +
-    '"><foreignObject width="100%" height="100%">' + parts.join('') +
-    '</foreignObject></svg>';
-  var img = new Image();
-  img.onload = function () {
-    try { ctx.drawImage(img, 0, 0); } catch (e) { log('SVG 合成失败: ' + e); }
-    finish();
+  var buildSvgImage = function (container, cb) {
+    var svgActors = [];
+    var kids = container.children;
+    for (var i = 0; i < kids.length; i++) {
+      if (kids[i].style.display === 'none') continue;
+      var a = actors[kids[i].dataset.clipId];
+      if (a && a.el) svgActors.push(a);   // 只剩 SVG/HTML
+    }
+    if (!svgActors.length) { cb(null); return; }
+    var parts = [];
+    for (i = 0; i < svgActors.length; i++) {
+      var a3 = svgActors[i], r3 = a3.el.getBoundingClientRect();
+      try {
+        var clone = a3.el.cloneNode(true);
+        inlineStyles(a3.el, clone);
+        // wrapper 按屏幕 AABB 定位；克隆体需复现原元素的 scale/rotate：
+        // 取其计算矩阵，前面补 translate(wrapper半宽高) 让中心对齐
+        // （transform:none 会丢缩放——1280 宽的板按原尺寸溢出 wrapper）
+        clone.style.position = 'absolute';
+        clone.style.left = '0px';
+        clone.style.top = '0px';
+        var csw = r3.width * k, csh = r3.height * k;
+        clone.style.transformOrigin = '50% 50%';
+        clone.style.transform =
+          'translate(' + csw / 2 + 'px,' + csh / 2 + 'px) ' +
+          getComputedStyle(a3.el).transform;
+        var xml = new XMLSerializer().serializeToString(clone);
+        parts.push('<div xmlns="http://www.w3.org/1999/xhtml" style="position:absolute;left:' +
+          ((r3.left - rect.left) * k) + 'px;top:' + ((r3.top - rect.top) * k) +
+          'px;width:' + (r3.width * k) + 'px;height:' + (r3.height * k) + 'px;">' +
+          xml + '</div>');
+      } catch (e) { log('SVG 序列化失败: ' + e); }
+    }
+    if (!parts.length) { cb(null); return; }
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H +
+      '"><foreignObject width="100%" height="100%">' + parts.join('') +
+      '</foreignObject></svg>';
+    var img = new Image();
+    img.onload = function () { cb(img); };
+    img.onerror = function () { cb(null); };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   };
-  img.onerror = function () { finish(); };
-  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  // 合成链：正SVG → 顶层世界画布 → 负SVG → 交付
+  buildSvgImage(overlay, function (img1) {
+    if (img1) { try { ctx.drawImage(img1, 0, 0); } catch (e) {} }
+    try { ctx.drawImage(bgTopCanvas, 0, 0); } catch (e) {}
+    try { ctx.drawImage(glTopCanvas, 0, 0); } catch (e) {}
+    buildSvgImage(overlayTop, function (img2) {
+      if (img2) { try { ctx.drawImage(img2, 0, 0); } catch (e) {} }
+      finish();
+    });
+  });
 }
 
 // ---------------- 舞台交互（点选 / 拖动改基准位置） ----------------
@@ -671,29 +791,33 @@ function hitsAt(p) {
     var pc = pa.clip;
     if (!layerVisible(pc.layer)) continue;
     var pw = pa.natW * (pc.scale || 1), phh = pa.natH * (pc.scale || 1);
-    var pth = -(pc.rotation || 0) * Math.PI / 180;
-    var pdx = p.x - pc.x, pdy = p.y - pc.y;
+    var mv = evalMove(pc, time);   // 命中跟随 move 后的实际位置
+    var pth = -(mv.rot) * Math.PI / 180;
+    var pdx = p.x - mv.x, pdy = p.y - mv.y;
     var plx = pdx * Math.cos(-pth) - pdy * Math.sin(-pth);
     var ply = pdx * Math.sin(-pth) + pdy * Math.cos(-pth);
     if (Math.abs(plx) <= pw / 2 + 12 && Math.abs(ply) <= phh / 2 + 12) {
       hits.push(pc.id);
     }
   }
-  var kids = overlay.children;
-  for (var i = 0; i < kids.length; i++) {
-    var el = kids[i];
-    var cid = el.dataset.clipId;
-    if (!cid) continue;
-    var c = clipById(cid);
-    if (!c || !layerVisible(c.layer)) continue;
-    // SVG：优先当前矩形；display:none 时用上次可见矩形（拖时间窗外的片段）
-    var r = el.getBoundingClientRect();
-    if ((r.width === 0 || r.height === 0) && el.__lastRect) r = el.__lastRect;
-    var orect = overlay.getBoundingClientRect();
+  var domContainers = [overlay, overlayTop];
+  for (var di = 0; di < domContainers.length; di++) {
+    var orect = domContainers[di].getBoundingClientRect();
     var k = glState.w / orect.width;
-    var x0 = (r.left - orect.left) * k, y0 = (r.top - orect.top) * k;
-    var x1 = (r.right - orect.left) * k, y1 = (r.bottom - orect.top) * k;
-    if (p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1) hits.push(c.id);
+    var kids = domContainers[di].children;
+    for (var i = 0; i < kids.length; i++) {
+      var el = kids[i];
+      var cid = el.dataset.clipId;
+      if (!cid) continue;
+      var c = clipById(cid);
+      if (!c || !layerVisible(c.layer)) continue;
+      // SVG：优先当前矩形；display:none 时用上次可见矩形（拖时间窗外的片段）
+      var r = el.getBoundingClientRect();
+      if ((r.width === 0 || r.height === 0) && el.__lastRect) r = el.__lastRect;
+      var x0 = (r.left - orect.left) * k, y0 = (r.top - orect.top) * k;
+      var x1 = (r.right - orect.left) * k, y1 = (r.bottom - orect.top) * k;
+      if (p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1) hits.push(c.id);
+    }
   }
   for (var aid in actors) {
     var a = actors[aid];
@@ -790,34 +914,43 @@ document.addEventListener('mouseup', function () {
 
 // ---------------- 模型同步 ----------------
 function reconcile() {
-  // 删掉消失或类型/素材变化的 actor
+  // 删掉消失、类型/素材变化或图层跨越正负（换世界）的 actor
   for (var id in actors) {
     var c = clipById(id);
     var a = actors[id];
     if (!c || c.type !== a.clip.type ||
-        (a.kind === 'spine' && c.asset !== a.clip.asset)) {
+        (a.kind === 'spine' && c.asset !== a.clip.asset) ||
+        ((c.layer < 0) !== (a.clip.layer < 0))) {
       if (a.el) a.el.remove();
       delete actors[id];
     } else {
       a.clip = c;  // 换引用，保留运行时状态
     }
   }
-  // 新建
+  // 新建（负图层 spine 用顶层世界的资源）
   for (var i = 0; i < model.clips.length; i++) {
     var clip = model.clips[i];
     if (!actors[clip.id]) {
-      if (clip.type === 'spine') ensureSkeletonData(clip.asset, model.spine[clip.asset]);
+      if (clip.type === 'spine') {
+        ensureSkeletonData(clip.asset, model.spine[clip.asset],
+                           clip.layer < 0);
+      }
       actors[clip.id] = createActor(clip);
     }
   }
-  // 覆盖层按 layer 重排：layer 小（上）后 append → DOM 后 = 视觉上层。
+  // 覆盖层按 layer 重排：正图层进 #overlay（layer 小后 append=在上）；
+  // 负图层进 #overlayTop（更少负的先 append，更多负的在后=更上）。
   // spine 加载占位也参与（它有 el）。
-  var ovs = [];
+  var ovsPos = [], ovsNeg = [];
   for (id in actors) {
-    if (actors[id].el) ovs.push(actors[id]);
+    if (actors[id].el) {
+      (actors[id].clip.layer < 0 ? ovsNeg : ovsPos).push(actors[id]);
+    }
   }
-  ovs.sort(function (x, y) { return y.clip.layer - x.clip.layer; });
-  for (i = 0; i < ovs.length; i++) overlay.appendChild(ovs[i].el);
+  ovsPos.sort(function (x, y) { return y.clip.layer - x.clip.layer; });
+  ovsNeg.sort(function (x, y) { return x.clip.layer - y.clip.layer; });
+  for (i = 0; i < ovsPos.length; i++) overlay.appendChild(ovsPos[i].el);
+  for (i = 0; i < ovsNeg.length; i++) overlayTop.appendChild(ovsNeg[i].el);
 }
 
 // ---------------- 对外 API（Qt 经 runJavaScript 调用） ----------------
@@ -889,6 +1022,30 @@ window.stageApi = {
     exportIdx = 0;
     capAcc = 0;
   },
+  // 步进导出（Qt 握手驱动）：exportBegin 重置；exportNext 步进一帧并抓取，
+  // Qt 收到 exportFrame 后再调 exportNext。时间=帧序/fps 确定性推进，
+  // 抓帧快慢不影响帧数与时长——rAF 实时抽帧在重场景（多 SVG）下
+  // rAF<fps 会欠帧，视频时长缩水（实测 5.5s→4.13s）。
+  exportBegin: function () {
+    pause();
+    exportMode = true;
+    exportIdx = 0;
+    capAcc = 0;
+    var fps = (model && model.canvas && model.canvas.fps) || 30;
+    window.__exp = {
+      fps: fps,
+      total: Math.max(1, Math.round(duration * fps)),
+      i: 0,
+    };
+  },
+  exportNext: function () {
+    var e = window.__exp;
+    if (!e) return;
+    if (e.i >= e.total) { bcall('timeUpdate', duration); return; }
+    setTimeInternal(e.i / e.fps, true);
+    e.i++;
+    captureFrame();
+  },
   // Qt 拖放落点换算用：舞台在窗口中的显示矩形与缩放
   viewInfo: function () {
     var r = stageBox.getBoundingClientRect();
@@ -905,9 +1062,14 @@ window.stageApi = {
       var it = { id: id, kind: a.kind, ready: !!a.ready,
                  start: a.clip.start, end: a.clip.end,
                  layer: a.clip.layer, x: a.clip.x, y: a.clip.y };
+      if (a.kind === 'ov') {
+        var mv = evalMove(a.clip, time);   // move 后的有效变换
+        it.ex = mv.x; it.ey = mv.y; it.erot = mv.rot;
+      }
       if (a.kind === 'spine' && a.ready) {
         var tr = a.state.tracks[0];
         it.anim = tr && tr.animation ? tr.animation.name : null;
+        it.proc = a.curAnim || null;   // 程序动作名（base 之上的叠加层）
         it.trackTime = tr ? tr.trackTime : null;
         it.skelX = a.skeleton.x;
         it.skelY = a.skeleton.y;

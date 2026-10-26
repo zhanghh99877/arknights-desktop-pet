@@ -7,6 +7,13 @@
 (function () {
   var S = Math.sin;
 
+  function topFx(fx, id, bone, dx, dy, opacity, emoji) {
+    fx(id, bone, dx, dy, opacity, emoji);
+    var el = document.getElementById(id);
+    var top = document.getElementById('overlayTop');
+    if (el && top && el.parentNode !== top) top.appendChild(el);
+  }
+
   function pose(sk, t, fx) {
     var g = function (n) { return sk.findBone(n); };
     var root = g('Bone');
@@ -31,12 +38,12 @@
     // ④ 头跟着滚动节奏轻晃（Sleep 本身有呼吸，叠加少量即可）
     g('F_Head_I').rotation += 6 * S(13 * t + 1);
 
-    // ⑤ 眼泪：滚到背面时藏起来
+    // ⑤ 眼泪：始终显示在顶层人物上
     var head = g('F_Head_I');
     if (!head) return;
-    var vis = c > 0.2;
-    fx('tear1', head, -30, -20, vis ? 0.5 + 0.4 * S(9 * t) : 0, '💦');
-    fx('tear2', head, -55, -5,  vis ? 0.5 + 0.4 * S(9 * t + 2) : 0, '💦');
+    topFx(fx, 'tear1', head, -30, -20, 0.75 + 0.2 * Math.abs(S(9 * t)), '💦');
+    topFx(fx, 'tear2', head, -55, -5, 0.75 + 0.2 * Math.abs(S(9 * t + 2)), '💦');
+    topFx(fx, 'tear3', head, 8, -8, 0.7 + 0.25 * Math.abs(S(8 * t)), '💧');
   }
 
   window.PROCS = window.PROCS || {};

@@ -42,6 +42,8 @@ class Timeline(QWidget):
     trimmed = Signal(str, float, float)  # 裁剪起止：id, start, end
     assetDropped = Signal(str, str, int, float)  # kind, name, 图层行, 时间秒
     layerVisibilityToggled = Signal(int)         # 眼睛开关：图层行号
+    widthHintChanged = Signal()                  # 缩放后内容宽度变了
+    panRequested = Signal(int)                   # 空白拖动/Alt滚轮：横向滚动增量 px
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -69,6 +71,7 @@ class Timeline(QWidget):
         self._visible = list(visible) if visible else [True] * self._layers
         self._relayout()
         self._clamp_xoff()
+        self.widthHintChanged.emit()
         self.update()
 
     def _content_w(self) -> float:
@@ -79,11 +82,37 @@ class Timeline(QWidget):
         self._xoff = min(max(0.0, self._xoff), maxoff)
 
     def _relayout(self):
-        """计算每行 top/高度与片段子通道分配（区间图染色：重叠的纵向铺开）。"""
+        """计算每行 top/高度与片段子通道分配（区间图染色：重叠的纵向铺开）。
+
+        负数图层片段统一放进标尺下的「顶层」车道（更顶层，行号 -1）。
+        """
         self._row_tops = []
         self._row_heights = []
         self._lane_of = {}
         y = RULER_H
+        neg = sorted((c for c in self._clips
+                      if int(c.get("layer", 0)) < 0),
+                     key=lambda c: float(c.get("start", 0)))
+        if neg:
+            lane_ends: list[float] = []
+            for c in neg:
+                s = float(c.get("start", 0))
+                e = float(c.get("end", 0))
+                for li, le in enumerate(lane_ends):
+                    if le <= s + 1e-9:
+                        lane_ends[li] = e
+                        self._lane_of[c.get("id", "")] = li
+                        break
+                else:
+                    lane_ends.append(e)
+                    self._lane_of[c.get("id", "")] = len(lane_ends) - 1
+            lanes = max(1, len(lane_ends))
+            self._neg_top = y
+            self._neg_h = lanes * (LANE_H + LANE_GAP) + 2 * ROW_PAD
+            y += self._neg_h
+        else:
+            self._neg_top = y
+            self._neg_h = 0
         for row in range(self._layers):
             self._row_tops.append(y)
             clips = sorted(
@@ -110,6 +139,13 @@ class Timeline(QWidget):
     def content_height(self) -> int:
         return self.height()
 
+    def content_width(self) -> int:
+        """全部时长所需宽度（供外层滚动区撑开横向滚动）。"""
+        return int(LABEL_W + self._duration * self._pps + 60)
+
+    def playhead_x(self) -> float:
+        return self._x(self._playhead)
+
     def set_playhead(self, t: float):
         self._playhead = max(0.0, t)
         self.update()
@@ -132,10 +168,15 @@ class Timeline(QWidget):
         return _STEPS[-1]
 
     def _row_at(self, y: float) -> int:
+        if self._neg_h and self._neg_top <= y < self._neg_top + self._neg_h:
+            return -1                       # 顶层车道（负数图层）
         for row in range(self._layers):
             if self._row_tops[row] <= y < self._row_tops[row] + self._row_heights[row]:
                 return row
-        return -1
+        return -99                          # 空白/区域外
+
+    def _neg_clips(self) -> list[dict]:
+        return [c for c in self._clips if int(c.get("layer", 0)) < 0]
 
     def _is_visible(self, row: int) -> bool:
         return row >= len(self._visible) or self._visible[row]
@@ -182,25 +223,34 @@ class Timeline(QWidget):
             p.drawText(QRectF(EYE_W + 2, y0, LABEL_W - EYE_W - 6, rh),
                        Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
                        f"层{row + 1}")
+        # 顶层车道（负数图层，恒可见，无眼睛）
+        if self._neg_h:
+            p.fillRect(0, self._neg_top, w, self._neg_h, QColor("#eefaf2"))
+            p.setPen(QPen(BORDER))
+            p.drawLine(0, self._neg_top + self._neg_h - 1, w,
+                       self._neg_top + self._neg_h - 1)
+            p.setPen(QPen(QColor("#5da271")))
+            p.drawText(QRectF(EYE_W + 2, self._neg_top, LABEL_W - EYE_W - 6,
+                              self._neg_h),
+                       Qt.AlignmentFlag.AlignVCenter |
+                       Qt.AlignmentFlag.AlignRight, "顶层")
         p.setPen(QPen(BORDER))
         p.drawLine(LABEL_W - 1, 0, LABEL_W - 1, h)
 
         # 片段块（子通道纵向铺开；隐藏图层半透明）
         p.setFont(self.font())
-        for c in self._clips:
+
+        def draw_block(c: dict, y: float):
             cid = c.get("id", "")
-            row = int(c.get("layer", 0))
-            if not (0 <= row < self._layers):
-                continue
             lane = self._lane_of.get(cid, 0)
             x0 = self._x(float(c.get("start", 0)))
             x1 = self._x(float(c.get("end", 0)))
             if x1 < LABEL_W or x0 > w:
-                continue
-            y = self._row_tops[row] + ROW_PAD + lane * (LANE_H + LANE_GAP)
+                return
             rect = QRectF(x0, y, max(6.0, x1 - x0 - 1.5), LANE_H)
             color = QColor(COLORS.get(c.get("type", ""), QColor("#888888")))
-            if not self._is_visible(row):
+            row = int(c.get("layer", 0))
+            if 0 <= row < self._layers and not self._is_visible(row):
                 color.setAlpha(70)
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(color)
@@ -223,6 +273,19 @@ class Timeline(QWidget):
                            label, Qt.TextElideMode.ElideRight,
                            int(rect.width() - 8)))
 
+        # 顶层车道的负数图层块
+        for c in self._neg_clips():
+            lane = self._lane_of.get(c.get("id", ""), 0)
+            draw_block(c, self._neg_top + ROW_PAD + lane * (LANE_H + LANE_GAP))
+        # 普通图层行
+        for c in self._clips:
+            row = int(c.get("layer", 0))
+            if row < 0 or not (0 <= row < self._layers):
+                continue
+            lane = self._lane_of.get(c.get("id", ""), 0)
+            draw_block(c, self._row_tops[row] + ROW_PAD
+                       + lane * (LANE_H + LANE_GAP))
+
         # 播放头
         px = self._x(self._playhead)
         p.setPen(QPen(PLAYHEAD, 2))
@@ -236,13 +299,18 @@ class Timeline(QWidget):
     EDGE = 7  # 裁剪热区 px
 
     def _hit_clip(self, x: float, row: int, y: float):
-        """同行命中：先按子通道纵坐标过滤，再取时间相交的最后绘制者。"""
+        """同行命中（row=-1 = 顶层车道，匹配全部负数图层）。"""
         best = None
+        base = self._neg_top if row == -1 else self._row_tops[row]
         for c in self._clips:
-            if int(c.get("layer", 0)) != row:
+            cl = int(c.get("layer", 0))
+            if row == -1:
+                if cl >= 0:
+                    continue
+            elif cl != row:
                 continue
             lane = self._lane_of.get(c.get("id", ""), 0)
-            cy = self._row_tops[row] + ROW_PAD + lane * (LANE_H + LANE_GAP)
+            cy = base + ROW_PAD + lane * (LANE_H + LANE_GAP)
             if not (cy - 1 <= y <= cy + LANE_H + 1):
                 continue
             x0 = self._x(float(c.get("start", 0)))
@@ -259,8 +327,8 @@ class Timeline(QWidget):
             return
         if x < LABEL_W:
             row = self._row_at(y)
-            if row >= 0:
-                # 眼睛开关热区
+            if row is not None and row >= 0:
+                # 眼睛开关热区（顶层车道恒可见，无眼睛）
                 rh = self._row_heights[row]
                 eye_rect = QRectF(2, self._row_tops[row] + rh / 2 - 8,
                                   EYE_W, 16)
@@ -268,13 +336,13 @@ class Timeline(QWidget):
                     self.layerVisibilityToggled.emit(row)
             return
         row = self._row_at(y)
-        if row < 0:
+        if row is None or row <= -99:
             return
         hit = self._hit_clip(x, row, y)
         if not hit:
             # 空白区域：左键拖 = 横向平移视图（点击仍是取消选中）
             self.selected.emit("")
-            self._drag = ("pan", x, self._xoff)
+            self._drag = ("pan", x)
             return
         c, x0, x1 = hit
         self.selected.emit(c.get("id", ""))
@@ -294,10 +362,9 @@ class Timeline(QWidget):
         if mode == "seek":
             self.seek.emit(round(min(self._t(x), self._duration), 3))
         elif mode == "pan":
-            _, x0, off0 = self._drag
-            self._xoff = off0 - (x - x0)
-            self._clamp_xoff()
-            self.update()
+            _, last_x = self._drag
+            self.panRequested.emit(round(last_x - x))
+            self._drag = ("pan", x)
         elif mode == "move":
             _, cid, orig_start, orig_end, grab = self._drag[:5]
             delta = round((self._t(x - grab) - orig_start) * 10) / 10
@@ -336,12 +403,11 @@ class Timeline(QWidget):
             self._pps = min(600.0, max(10.0, self._pps * factor))
             self._relayout()
             self._clamp_xoff()
+            self.widthHintChanged.emit()
             self.update()
         elif mods & Qt.KeyboardModifier.AltModifier:
             # Alt+滚轮：横向平移
-            self._xoff += e.angleDelta().y() / 2.0
-            self._clamp_xoff()
-            self.update()
+            self.panRequested.emit(round(e.angleDelta().y() / 2.0))
         else:
             e.ignore()   # 交给外层 QScrollArea 纵向滚动
 
@@ -363,8 +429,8 @@ class Timeline(QWidget):
             return
         pos = e.position()
         row = self._row_at(pos.y())
-        if row < 0:
-            row = self._layers - 1
+        if row is None or row <= -99:
+            row = self._layers - 1                   # 落在区域外 → 最底行
         t = round(min(self._t(pos.x()), self._duration) * 10) / 10
         self.assetDropped.emit(info.get("kind", ""), info.get("name", ""),
                                row, max(0.0, t))

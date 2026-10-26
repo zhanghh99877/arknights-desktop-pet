@@ -41,6 +41,7 @@ class AnimListEditor(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._anims: list[str] = []
+        self._procs: list[str] = []
         self._rows = QVBoxLayout()
         self._rows.setContentsMargins(0, 0, 0, 0)
         self._rows.setSpacing(2)
@@ -54,9 +55,10 @@ class AnimListEditor(QWidget):
         layout.addLayout(self._rows)
         layout.addWidget(add, alignment=Qt.AlignmentFlag.AlignLeft)
 
-    def set_anims(self, anims: list[str]):
+    def set_anims(self, anims: list[str], procs: list[str] = ()):
         """换模型后更新所有行的可选动作，保留已选（失效的置空）。"""
         self._anims = list(anims)
+        self._procs = list(procs)
         for i in range(self._rows.count()):
             row = self._rows.itemAt(i).widget()
             combo = row.findChild(QComboBox)
@@ -64,8 +66,10 @@ class AnimListEditor(QWidget):
             combo.blockSignals(True)
             combo.clear()
             combo.addItem("（无）", "")
-            for a in anims:
+            for a in self._anims:
                 combo.addItem(a, a)
+            for p in self._procs:
+                combo.addItem("✨" + p, p)
             combo.setCurrentIndex(max(0, combo.findData(cur)))
             combo.blockSignals(False)
 
@@ -97,6 +101,8 @@ class AnimListEditor(QWidget):
         combo.addItem("（无）", "")
         for a in self._anims:
             combo.addItem(a, a)
+        for p in self._procs:
+            combo.addItem("✨" + p, p)
         combo.setCurrentIndex(max(0, combo.findData(value)))
         combo.currentIndexChanged.connect(lambda *_: self.changed.emit())
         pv = QPushButton("▶")
@@ -215,6 +221,7 @@ class PetPage(QWidget):
         self.preview = PetPlayer(background="#ffffff")
         self.preview.setMinimumSize(320, 320)
         self._preview_model: tuple | None = None  # 预览页已加载的模型
+        self._proc_src: dict[str, str] = {}        # 自创动作名 → JS 源码
 
         # 配置栏可滚动（条目多了超出可视高度时整体滚动；
         # 下拉框已禁用滚轮，滚轮事件都会落到这里）
@@ -250,22 +257,39 @@ class PetPage(QWidget):
 
     # ---- 下拉填充 ----
     def _reload_anims(self):
-        anims = (self._library.spine_info(
-            self.model_combo.currentData()) or {}).get("animations", [])
+        model = self.model_combo.currentData() or ""
+        info = self._library.spine_info(model) or {}
+        anims = info.get("animations", [])
+        proc_paths = self._library.procs(model)
+        self._proc_src = self._read_proc_sources(proc_paths)
+        procs = list(proc_paths)
         self.preview_combo.blockSignals(True)
         self.preview_combo.clear()
         for a in anims:
             self.preview_combo.addItem(a, a)
+        for p in procs:
+            self.preview_combo.addItem("✨" + p, p)
         self.preview_combo.blockSignals(False)
         for key, _ in _EVENTS:
             ed = self.editors[key]
-            ed.set_anims(anims)  # 换模型后保留已选，失效的置空
+            ed.set_anims(anims, procs)  # 换模型后保留已选，失效的置空
             if self._loading:
                 # 必须先 set_anims 再 set_values，否则选项不存在值会被清空
                 ed.set_values(self._cfg.get(key, []))
         if not self._loading:
             self._collect()             # 模型失效的动作会被清掉，落库
             self._reload_preview()
+
+    @staticmethod
+    def _read_proc_sources(paths: dict[str, object]) -> dict[str, str]:
+        """读取程序动作源码；读失败的文件不出现在列表里。"""
+        out = {}
+        for name, path in paths.items():
+            try:
+                out[name] = path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+        return out
 
     # ---- 配置收集 / 预览 ----
     def _collect_cfg(self):
@@ -288,19 +312,32 @@ class PetPage(QWidget):
         if not info:
             return
         self._preview_model = model
+        configured = list(dict.fromkeys(
+            a for key, _ in _EVENTS for a in self._cfg.get(key, []) if a))
         default = (self._cfg.get("default") or self._cfg.get("idle")
                    or info["animations"][:1])
+        fit_candidates = sorted(a for a in configured
+                                if a in info["animations"])
+        fit_ref = fit_candidates[0] if fit_candidates \
+            else (info["animations"][0] if info["animations"] else "")
+        fit_all = list(dict.fromkeys(configured + info["animations"]))
         # 预览缩小到 25%：取景框放大，看全动作余量
         self.preview.play_spine(info["skel"], info["atlas"],
                                 default[0] if default else "",
-                                view_scale=0.25)
+                                view_scale=0.25, fit=fit_ref,
+                                fit_all=fit_all,
+                                procs=self._proc_src or None)
 
     def _on_preview_pick(self):
         if not self._loading:
             self._preview_anim(self.preview_combo.currentData())
 
     def _preview_anim(self, name: str):
-        if name:
+        if not name:
+            return
+        if name in self._proc_src:
+            self.preview.set_proc(name)
+        else:
             self.preview.set_animation(name)
 
     def _on_config_changed(self):

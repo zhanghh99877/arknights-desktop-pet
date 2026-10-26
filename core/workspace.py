@@ -7,9 +7,10 @@
 Spine 模型是公用素材：片段按模型名引用 Spine/ 库，不复制。
 片段（Clip）：
 - spine：存在区间 + 基准变换 + 动画播放条目(anims) + 平移/旋转条目(moves)；
-- png/svg：存在区间 + 静态变换。
+- png/svg：存在区间 + 基准变换 + 平移/旋转条目(moves)。
 求值语义见 html/stage.js（JS 实现为准）：
-    move 条目命中 → 线性插值；否则夹取到最近条目的端点值；
+    move 条目命中 → 线性插值；首条目之前 → 其起点；条目间/全部结束 →
+    冻结在最近已开始条目的终点；
     anim 条目命中 → 切动作、trackTime=(t-start)*speed，loop 取模否则
     clamp 冻结末帧；条目之间冻结上一动作；都没有 → setup pose。
 """
@@ -33,12 +34,16 @@ _NAME_OK = re.compile(r"^[^\\/:*?\"<>|]{1,60}$")
 
 @dataclass
 class AnimEntry:
-    """一段动画播放：x秒-x秒 播 anim，speed 倍速，loop=播1次或循环。"""
+    """一段动画播放：x秒-x秒 播 anim，speed 倍速，loop=播1次或循环。
+
+    flip=True 时该段内骨架水平镜像（人物"转身"朝向另一边）。
+    """
     start: float = 0.0
     end: float = 2.0
     anim: str = ""
     speed: float = 1.0
     loop: bool = False
+    flip: bool = False
 
 
 @dataclass
@@ -69,7 +74,7 @@ class Clip:
     rotation: float = 0.0        # 度，绕中心（spine 绕脚底中心）
     opacity: float = 1.0
     anims: list[AnimEntry] = field(default_factory=list)   # 仅 spine
-    moves: list[MoveEntry] = field(default_factory=list)   # 仅 spine
+    moves: list[MoveEntry] = field(default_factory=list)   # 全类型可用
 
     def to_dict(self) -> dict:
         return {
@@ -89,9 +94,18 @@ class Clip:
                 return float(d.get(key, default))
             except (TypeError, ValueError):
                 return default
-        anims = [AnimEntry(**{k: float(v) if k != "anim" else str(v)
-                              for k, v in a.items()})
-                 for a in d.get("anims", []) if isinstance(a, dict)]
+        anims = []
+        for a in d.get("anims", []):
+            if not isinstance(a, dict):
+                continue
+            anims.append(AnimEntry(
+                start=float(a.get("start", 0.0)),
+                end=float(a.get("end", 2.0)),
+                anim=str(a.get("anim", "")),
+                speed=float(a.get("speed", 1.0)),
+                loop=bool(a.get("loop", False)),
+                flip=bool(a.get("flip", False)),
+            ))
         moves = [MoveEntry(**{k: float(v) for k, v in m.items()})
                  for m in d.get("moves", []) if isinstance(m, dict)]
         return cls(

@@ -14,10 +14,10 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QTimer, QMimeData, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
-    QFormLayout, QGroupBox, QHBoxLayout, QInputDialog, QLabel, QLineEdit,
-    QListWidget, QMessageBox, QProgressDialog, QPushButton, QScrollArea,
-    QSpinBox, QSplitter, QToolButton, QVBoxLayout, QWidget,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
+    QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QInputDialog, QLabel,
+    QLineEdit, QListWidget, QMessageBox, QProgressDialog, QPushButton,
+    QScrollArea, QSpinBox, QSplitter, QToolButton, QVBoxLayout, QWidget,
 )
 
 from core.assets import RelayLibrary
@@ -59,7 +59,7 @@ class AssetList(QListWidget):
 # ---------------- 条目编辑器 ----------------
 
 class AnimEntryEditor(QWidget):
-    """动画播放条目：每行 开始/结束/动作/倍速/次数 + ×，底部 ＋。"""
+    """动画播放条目：每行 开始/结束/动作/倍速/次数/水平翻转 + ×，底部 ＋。"""
 
     changed = Signal()
 
@@ -124,6 +124,9 @@ class AnimEntryEditor(QWidget):
         mode.addItem("播1次", False)
         mode.addItem("循环", True)
         mode.setCurrentIndex(1 if e.loop else 0)
+        flip = QCheckBox("水平翻转")
+        flip.setChecked(e.flip)
+        flip.setToolTip("该动画条目内 Spine 骨架水平镜像")
         rm = QPushButton("×")
         rm.setFixedWidth(24)
         rm.setProperty("class", "icon")
@@ -135,15 +138,17 @@ class AnimEntryEditor(QWidget):
             e.anim = anim.currentData() or anim.currentText()
             e.speed = speed.value()
             e.loop = bool(mode.currentData())
+            e.flip = flip.isChecked()
             self.changed.emit()
 
         for wdg in (start, end, speed):
             wdg.valueChanged.connect(commit)
         anim.currentIndexChanged.connect(commit)
         mode.currentIndexChanged.connect(commit)
+        flip.toggled.connect(commit)
         rm.clicked.connect(lambda: (self._clip.anims.remove(e),
                                     self._rebuild(), self.changed.emit()))
-        for wdg in (start, end, anim, speed, mode, rm):
+        for wdg in (start, end, anim, speed, mode, flip, rm):
             h.addWidget(wdg)
         h.addStretch(1)
         return row
@@ -264,6 +269,9 @@ class WorkspacePage(QWidget):
         self._current_time = 0.0
         self._exporter: VideoExporter | None = None
         self._progress: QProgressDialog | None = None
+        self._preview_dialog: QDialog | None = None
+        self._preview_time = 0.0
+        self._preview_sizes: list[int] = []
         self._loading = False
 
         self._build_ui()
@@ -286,6 +294,8 @@ class WorkspacePage(QWidget):
         self.timeline.trimmed.connect(self._on_timeline_trimmed)
         self.timeline.assetDropped.connect(self._on_timeline_drop)
         self.timeline.layerVisibilityToggled.connect(self._on_layer_toggle)
+        self.timeline.widthHintChanged.connect(self._update_timeline_width)
+        self.timeline.panRequested.connect(self._on_timeline_pan)
 
         # 模型同步防抖
         self._sync_timer = QTimer(self)
@@ -311,6 +321,9 @@ class WorkspacePage(QWidget):
         btn_pause.setAutoRaise(True)
         btn_stop = QToolButton(text="⏹ 停止")
         btn_stop.setAutoRaise(True)
+        self.btn_fullscreen = QToolButton(text="⛶ 全屏预览")
+        self.btn_fullscreen.setAutoRaise(True)
+        self.btn_fullscreen.setToolTip("从头全屏播放，按 Esc 退出")
         self.time_label = QLabel("0.00 / 0.00 s")
         btn_export = QPushButton("导出视频…")
         btn_export.setProperty("class", "primary")
@@ -325,6 +338,7 @@ class WorkspacePage(QWidget):
         bar.addWidget(self.btn_play)
         bar.addWidget(btn_pause)
         bar.addWidget(btn_stop)
+        bar.addWidget(self.btn_fullscreen)
         bar.addWidget(self.time_label)
         bar.addStretch(1)
         bar.addWidget(self.status_label)
@@ -378,16 +392,16 @@ class WorkspacePage(QWidget):
         """)
         props_scroll.setWidget(self._props)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(left)
-        splitter.addWidget(self.stage)
-        splitter.addWidget(props_scroll)
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-        splitter.setStretchFactor(2, 0)
-        splitter.setSizes([220, 700, 400])
+        self._splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._splitter.addWidget(left)
+        self._splitter.addWidget(self.stage)
+        self._splitter.addWidget(props_scroll)
+        self._splitter.setStretchFactor(0, 0)
+        self._splitter.setStretchFactor(1, 1)
+        self._splitter.setStretchFactor(2, 0)
+        self._splitter.setSizes([220, 700, 400])
 
-        # ---- 底：时间轴（QScrollArea 纵向滚动） ----
+        # ---- 底：时间轴（QScrollArea 纵向滚动；横向按内容宽撑开可滚） ----
         bottom = QHBoxLayout()
         bottom.setContentsMargins(8, 4, 8, 8)
         self.timeline = Timeline()
@@ -396,7 +410,7 @@ class WorkspacePage(QWidget):
         self.timeline_scroll.setWidgetResizable(False)
         self.timeline_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         self.timeline_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.timeline_scroll.setMaximumHeight(300)
         self.timeline_scroll.viewport().installEventFilter(self)
         layer_btns = QVBoxLayout()
@@ -411,7 +425,7 @@ class WorkspacePage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.addLayout(bar)
-        root.addWidget(splitter, 1)
+        root.addWidget(self._splitter, 1)
         root.addLayout(bottom)
 
         # ---- 信号 ----
@@ -422,6 +436,7 @@ class WorkspacePage(QWidget):
         self.btn_play.clicked.connect(self.stage.play)
         btn_pause.clicked.connect(self.stage.pause)
         btn_stop.clicked.connect(self._on_stop)
+        self.btn_fullscreen.clicked.connect(self._on_fullscreen_preview)
         btn_export.clicked.connect(self._on_export)
         btn_import.clicked.connect(self._on_import_assets)
         btn_add_layer.clicked.connect(self._on_add_layer)
@@ -555,11 +570,18 @@ class WorkspacePage(QWidget):
             return
         d = self._project.to_dict()
         assets_base = self._store.assets_dir(self._project.name).resolve().as_uri() + "/"
-        self.stage.sync_project(d, self._library, assets_base)
+        # 素材版本 = project.json 的 mtime：重新生成/保存后素材 URL 换版拉新
+        try:
+            rev = int((self._store.root / self._project.name /
+                       "project.json").stat().st_mtime)
+        except OSError:
+            rev = 0
+        self.stage.sync_project(d, self._library, assets_base, str(rev))
         self.timeline.set_data(self._project.duration, self._project.layers,
                                d["clips"], self._sel,
                                d.get("layers_visible"))
         self.timeline.setFixedHeight(self.timeline.content_height())
+        self._update_timeline_width()
         self.time_label.setText(
             f"{self._current_time:.2f} / {self._project.duration:.2f} s")
 
@@ -629,6 +651,10 @@ class WorkspacePage(QWidget):
         y = float(self._project.canvas["h"]) / 2
         self._add_clip(kind, name, x, y, start=t, layer=layer)
 
+    def _on_timeline_pan(self, dx: int):
+        sb = self.timeline_scroll.horizontalScrollBar()
+        sb.setValue(sb.value() + dx)
+
     def _on_seek(self, t: float):
         self._current_time = t
         self.stage.set_time(t)
@@ -637,10 +663,18 @@ class WorkspacePage(QWidget):
             f"{t:.2f} / {self._project.duration:.2f} s" if self._project else f"{t:.2f}")
 
     def _on_time(self, t: float):
+        changed = abs(t - self._current_time) > 1e-9
         self._current_time = t
         self.timeline.set_playhead(t)
         if self._project:
             self.time_label.setText(f"{t:.2f} / {self._project.duration:.2f} s")
+        # 时间变化时，播放头跑出可视范围才自动跟随
+        if changed:
+            sb = self.timeline_scroll.horizontalScrollBar()
+            vw = self.timeline_scroll.viewport().width()
+            px = self.timeline.playhead_x()
+            if px < sb.value() or px > sb.value() + vw:
+                sb.setValue(int(max(0, min(px - vw / 2, sb.maximum()))))
         if self._exporter and self._progress:
             self._progress.setValue(self._exporter.frames)
             # JS 播到结尾（t 到 duration）自然收尾
@@ -651,13 +685,49 @@ class WorkspacePage(QWidget):
         self.stage.pause()
         self.stage.set_time(0)
 
+    def _on_fullscreen_preview(self):
+        if not self._project or self._exporter or self._preview_dialog:
+            return
+        self._preview_time = self._current_time
+        self._preview_sizes = self._splitter.sizes()
+        self.stage.pause()
+        self.stage.set_time(0)
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"全屏预览 - {self._project.name}")
+        dlg.setModal(True)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self.stage)
+        self.stage.setEnabled(False)
+        self._preview_dialog = dlg
+        dlg.finished.connect(self._on_fullscreen_finished)
+        dlg.showFullScreen()
+        QTimer.singleShot(0, self.stage.play)
+
+    def _on_fullscreen_finished(self, _result: int):
+        dlg = self._preview_dialog
+        if dlg is None:
+            return
+        self.stage.pause()
+        self._splitter.insertWidget(1, self.stage)
+        self._splitter.setSizes(self._preview_sizes)
+        self.stage.setEnabled(True)
+        self.stage.show()
+        self._on_seek(self._preview_time)
+        self._preview_dialog = None
+        dlg.deleteLater()
+
     def eventFilter(self, obj, e):
-        # 时间轴横向占满滚动区宽度（widgetResizable=False 时不会自动跟随）
+        # 时间轴宽度 = max(视口宽, 内容宽)：时长超视口时撑开横向滚动
         if obj is self.timeline_scroll.viewport() and \
                 e.type() == e.Type.Resize:
-            self.timeline.setFixedWidth(
-                max(400, self.timeline_scroll.viewport().width()))
+            self._update_timeline_width()
         return super().eventFilter(obj, e)
+
+    def _update_timeline_width(self):
+        w = max(400, self.timeline_scroll.viewport().width(),
+                self.timeline.content_width())
+        self.timeline.setFixedWidth(w)
 
     def _select(self, clip_id: str):
         self._sel = clip_id
@@ -684,9 +754,9 @@ class WorkspacePage(QWidget):
 
         name_edit = QLineEdit(clip.name)
         form.addRow("名称", name_edit)
-        layer_spin = QSpinBox(minimum=0, maximum=self._project.layers - 1,
+        layer_spin = QSpinBox(minimum=-99, maximum=self._project.layers - 1,
                               value=clip.layer)
-        form.addRow("图层（0=最上层）", layer_spin)
+        form.addRow("图层（负数=更顶层）", layer_spin)
         start = NoWheelDoubleSpinBox(minimum=0, maximum=36000,
                                      value=clip.start, singleStep=0.1)
         end = NoWheelDoubleSpinBox(minimum=0, maximum=36000,
@@ -724,6 +794,9 @@ class WorkspacePage(QWidget):
             clip.x, clip.y = x.value(), y.value()
             self._emit_change()
 
+        # 数值框定宽：加减步进按钮留在可视区内，不随表单拉满
+        for wdg in (start, end, scale, rot, op, x, y, layer_spin):
+            wdg.setFixedWidth(100)
         for wdg in (start, end, scale, rot, op, x, y):
             wdg.valueChanged.connect(commit)
         name_edit.textChanged.connect(commit)
@@ -744,13 +817,14 @@ class WorkspacePage(QWidget):
             v1.addWidget(self._anim_editor)
             self._props_lay.addWidget(g1)
 
-            g2 = QGroupBox("平移/绕中心旋转（与动画独立）")
-            v2 = QVBoxLayout(g2)
-            self._move_editor = MoveEntryEditor()
-            self._move_editor.load(clip)
-            self._move_editor.changed.connect(self._emit_change)
-            v2.addWidget(self._move_editor)
-            self._props_lay.addWidget(g2)
+        g2 = QGroupBox("平移/绕中心旋转" +
+                       ("（与动画独立）" if clip.type == "spine" else ""))
+        v2 = QVBoxLayout(g2)
+        self._move_editor = MoveEntryEditor()
+        self._move_editor.load(clip)
+        self._move_editor.changed.connect(self._emit_change)
+        v2.addWidget(self._move_editor)
+        self._props_lay.addWidget(g2)
 
         self._props_lay.addStretch(1)
         self._loading = False
@@ -823,8 +897,8 @@ class WorkspacePage(QWidget):
         self._progress.setMinimumDuration(0)
         self._progress.canceled.connect(self._export_cancel)
         self.stage.set_export_mode(True)
-        self.stage.set_time(0)
-        self.stage.play()
+        self.stage.export_begin()
+        self.stage.export_next()   # 步进导出：收到一帧回一脚，直至 expected
         self._progress.show()
 
     def _on_export_frame(self, b64: str, _index: int):
@@ -840,6 +914,8 @@ class WorkspacePage(QWidget):
             self._progress.setValue(ex.frames)
         if ex.done:
             self._export_finish(True, "")
+        else:
+            self.stage.export_next()
 
     def _export_cancel(self):
         if self._exporter:

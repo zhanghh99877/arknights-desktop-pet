@@ -58,6 +58,7 @@ class PetWindow(PetPlayer):
         self._model: str | None = None      # 当前已加载模型名（文件夹名）
         self._state = "default"            # default | start | idle | move | interact | closing
         self._current_anim = ""
+        self._proc_src: dict[str, str] = {} # 自创动作名 → JS 源码
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -120,35 +121,51 @@ class PetWindow(PetPlayer):
             return
         self._model = model
         anims = info["animations"]
+        self._proc_src = self._read_proc_sources(self._library.procs(model))
         # 取景并集：全部已配置动作（去重保序），大动作也播得下。
         # 结果按 模型+动作集+文件mtime 缓存进库，启动直接套用不重算
         fit_all = list(dict.fromkeys(
             a for key in ("default", "start", "move", "interact", "close", "idle")
             for a in self._cfg.get(key, []) if a))
         default = self._default_anim()
-        # 取景参照必须确定性（排序后取第一个），否则随机挑选导致缓存永不命中
+        # 取景参照必须确定性，且必须是官方骨架动作；自创动作由 JS 跳过取样
         ref_pool = sorted(a for a in (self._cfg.get("default")
-                                      or self._cfg.get("idle") or []) if a)
-        fit_ref = ref_pool[0] if ref_pool else default
+                                      or self._cfg.get("idle") or [])
+                          if a in anims)
+        fit_ref = ref_pool[0] if ref_pool else (anims[0] if anims else "")
+        proc_mtime = max((p.stat().st_mtime for p in
+                          self._library.procs(model).values()), default=0)
         import json as _json
         sig = _json.dumps({"anims": sorted(fit_all), "fit": fit_ref,
-                           "mtime": info["skel"].stat().st_mtime})
+                           "mtime": info["skel"].stat().st_mtime,
+                           "proc_mtime": proc_mtime})
         cached_vp = self._cfg_store.get_viewport(model, sig) \
             if self._cfg_store else None
         self._vp_sig = (model, sig)  # 算出来回传时按这个键存
         start = self._pick_from("start")
-        if start and start in anims:
+        if start:
             self._state = "start"
             self._current_anim = start
             # 取景框按默认动作算，Start 再大也不压缩主模型
             self.play_spine(info["skel"], info["atlas"], start,
                             loop=False, fit=fit_ref, fit_all=fit_all,
-                            viewport=cached_vp)
+                            viewport=cached_vp, procs=self._proc_src or None)
         else:
             self._state = "default"
             self._current_anim = default
             self.play_spine(info["skel"], info["atlas"], default, loop=True,
-                            fit=fit_ref, fit_all=fit_all, viewport=cached_vp)
+                            fit=fit_ref, fit_all=fit_all,
+                            viewport=cached_vp, procs=self._proc_src or None)
+
+    @staticmethod
+    def _read_proc_sources(paths: dict[str, object]) -> dict[str, str]:
+        out = {}
+        for name, path in paths.items():
+            try:
+                out[name] = path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+        return out
 
     def _pick_from(self, key: str) -> str:
         """从事件的动作列表随机挑一个（尽量避免和当前动作重复）。"""
@@ -162,12 +179,19 @@ class PetWindow(PetPlayer):
         """常态动作：default 池优先；没配则退回 idle 池（兼容旧配置）。"""
         return self._pick_from("default") or self._pick_from("idle")
 
+    def _play_action(self, name: str, loop: bool):
+        """播放官方动作或自创程序动作。"""
+        if not name:
+            return
+        self._current_anim = name
+        if name in self._proc_src:
+            self.set_proc(name, loop=loop)
+        else:
+            self.set_animation(name, loop=loop)
+
     def _go_default(self):
         self._state = "default"
-        anim = self._default_anim()
-        if anim:
-            self._current_anim = anim
-            self.set_animation(anim, loop=True)
+        self._play_action(self._default_anim(), loop=True)
 
     def _on_idle_tick(self):
         # 待机：只有常态下才触发；抽一个播一次，播完由完成事件送回常态
@@ -176,17 +200,14 @@ class PetWindow(PetPlayer):
         anim = self._pick_from("idle")
         if anim:
             self._state = "idle"
-            self._current_anim = anim
-            self.set_animation(anim, loop=False)
+            self._play_action(anim, loop=False)
 
     def _on_drag_start(self):
         if self._state == "closing":
             return
         move = self._pick_from("move")
         self._state = "move"
-        if move:
-            self._current_anim = move
-            self.set_animation(move, loop=True)
+        self._play_action(move, loop=True)
 
     def _on_drag_end(self):
         if self._state == "move":
@@ -198,8 +219,7 @@ class PetWindow(PetPlayer):
         interact = self._pick_from("interact")
         if interact:
             self._state = "interact"
-            self._current_anim = interact
-            self.set_animation(interact, loop=False)
+            self._play_action(interact, loop=False)
 
     def _on_anim_complete(self, name: str):
         if name != self._current_anim:
@@ -229,8 +249,7 @@ class PetWindow(PetPlayer):
         anim = self._pick_from("close")
         if anim and self._model:
             self._state = "closing"
-            self._current_anim = anim
-            self.set_animation(anim, loop=False)
+            self._play_action(anim, loop=False)
             QTimer.singleShot(5000, QApplication.quit)  # 兜底：动画事件丢失也能退
         else:
             QTimer.singleShot(0, QApplication.quit)
