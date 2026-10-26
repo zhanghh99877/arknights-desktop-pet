@@ -7,9 +7,10 @@
 取景框：全部官方动作的包围盒并集（封顶参照动作 5 倍），
 结果按 模型+动作集+程序动作+skel mtime 缓存进库（与 PetWindow 同模式）。
 
-导出GIF：列表下方一个按钮导出当前选中动作，按微信表情包规格输出：
-240×240 方形、透明背景、内容裁剪贴边（按全部帧的 alpha 包围盒裁
-出角色再居中补方）、~10fps、调色板编码；超过 1MB 自动减色重编码。
+导出MP4：列表下方一个按钮导出当前选中动作，按微信视频规格输出：
+内容按全部帧 alpha 包围盒裁剪贴边（去白边）、居中补成方形白底、
+480×480、H.264（yuv420p + faststart，微信硬件解码丝滑）、~20fps。
+透明背景在视频格式下不存在，角色合成到白底（聊天场景白底无感）。
 """
 
 from __future__ import annotations
@@ -17,10 +18,11 @@ from __future__ import annotations
 import base64
 import json
 import re
+import subprocess
 from pathlib import Path
 
 from PySide6.QtCore import QBuffer, QIODevice, QRect, Qt, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices, QImage, QPainter, qAlpha
+from PySide6.QtGui import QColor, QDesktopServices, QImage, QPainter, qAlpha
 from PySide6.QtWidgets import (
     QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel,
     QListWidget, QListWidgetItem, QMessageBox, QProgressDialog, QPushButton,
@@ -28,20 +30,91 @@ from PySide6.QtWidgets import (
 )
 
 from core.assets import RelayLibrary
-from core.gif_exporter import GifExporter
 from core.pet_config import PetConfig
 from core.pet_player import PetPlayer
 from ui.widgets import NoWheelComboBox
 
 _PROC_PREFIX = "✨ "
-_GIF_FPS = 10               # 微信表情包级帧率，软解码跟得上
-_GIF_PROC_SECONDS = 3.0     # 程序动作录 3 秒
-_GIF_MAX_SECONDS = 3.5      # 官方动作最多录 3.5 秒
-_GIF_TARGET = 240           # 表情包标准边长（方形）
-_GIF_MARGIN = 0.05          # 内容包围盒外扩余量（比例）
-_GIF_SIZE_LIMIT = 1_000_000
-# 超限时按序减色重编码（尺寸已固定 240，只降色数）
-_GIF_FALLBACKS = (128, 96, 64)
+_MP4_FPS = 20              # 视频走硬件解码，20fps 丝滑
+_MP4_PROC_SECONDS = 3.0    # 程序动作录 3 秒
+_MP4_MAX_SECONDS = 3.5     # 官方动作最多录 3.5 秒
+_MP4_SIDE = 480            # 方形边长（H.264 要求偶数，480 安全）
+_MP4_MARGIN = 0.05         # 内容包围盒外扩余量（比例）
+_MP4_CRF = 20              # 画质（18~23 均可）
+
+
+class StickerMp4Exporter:
+    """JPEG 帧经 stdin pipe → H.264 mp4（yuv420p + faststart，无音频）。
+
+    stderr 写日志文件——ffmpeg 写满管道缓冲会阻塞整个导出。
+    """
+
+    def __init__(self, out_path: str | Path, fps: int, expected_frames: int,
+                 side: int = _MP4_SIDE, crf: int = _MP4_CRF):
+        import imageio_ffmpeg
+        exe = imageio_ffmpeg.get_ffmpeg_exe()
+        self.expected = max(1, int(expected_frames))
+        self.frames = 0
+        self.error = ""
+        self._out = str(out_path)
+        self._cancelled = False
+        self._err_path = self._out + ".ffmpeg.log"
+        self._err_f = open(self._err_path, "w", encoding="utf-8",
+                           errors="replace")
+        self._proc = subprocess.Popen(
+            [exe, "-hide_banner", "-y",
+             "-f", "image2pipe", "-vcodec", "mjpeg", "-r", str(int(fps)),
+             "-i", "-",
+             "-vf", f"scale={side}:{side}:flags=lanczos",
+             "-c:v", "libx264", "-pix_fmt", "yuv420p",
+             "-crf", str(crf), "-preset", "veryfast",
+             "-movflags", "+faststart", "-an",
+             self._out],
+            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+            stderr=self._err_f)
+
+    @property
+    def done(self) -> bool:
+        return self.frames >= self.expected
+
+    def write_jpg_bytes(self, data: bytes) -> bool:
+        if self._cancelled:
+            return False
+        try:
+            self._proc.stdin.write(data)
+            self.frames += 1
+            return True
+        except (BrokenPipeError, OSError, ValueError) as e:
+            self.error = f"写帧失败: {e}"
+            return False
+
+    def cancel(self):
+        self._cancelled = True
+        try:
+            self._proc.kill()
+        except OSError:
+            pass
+
+    def finish(self) -> tuple[bool, str]:
+        if self._cancelled:
+            try:
+                self._err_f.close()
+            except OSError:
+                pass
+            return False, "已取消"
+        try:
+            if self._proc.stdin:
+                self._proc.stdin.close()
+            rc = self._proc.wait(timeout=60)
+            self._err_f.close()
+            err = Path(self._err_path).read_text(encoding="utf-8",
+                                                 errors="replace")
+        except Exception as e:
+            self.cancel()
+            return False, f"ffmpeg 收尾失败: {e}"
+        if rc != 0:
+            return False, err[-1500:] or f"ffmpeg 退出码 {rc}"
+        return True, ""
 
 
 class PlayPage(QWidget):
@@ -56,12 +129,12 @@ class PlayPage(QWidget):
         self._procs: dict[str, str] = {}    # 当前模型的程序动作 {名: JS 源码}
         self._vp_sig: tuple | None = None   # 取景框缓存键 (model, sig)
         self._loading = False               # 初始填充期间不触发加载
-        self._gif_expected = 0              # 计划帧数（先缓存后编码）
-        self._gif_progress: QProgressDialog | None = None
-        self._gif_name = ""
-        self._gif_is_proc = False
-        self._gif_path = ""
-        self._gif_frames: list[bytes] = []  # 抓取的原始帧（处理后编码）
+        self._mp4_expected = 0              # 计划帧数（先缓存后编码）
+        self._mp4_progress: QProgressDialog | None = None
+        self._mp4_name = ""
+        self._mp4_is_proc = False
+        self._mp4_path = ""
+        self._mp4_frames: list[bytes] = []  # 抓取的原始帧（处理后编码）
 
         # ---- 左侧：模型 + 动作列表 ----
         controls = QGroupBox("播放")
@@ -75,14 +148,14 @@ class PlayPage(QWidget):
         self.anim_list.currentRowChanged.connect(self._on_pick)
         form.addRow(self.anim_list)
 
-        hint = QLabel("✨ = 自创程序动作；选中动作后点下方按钮导出 GIF")
+        hint = QLabel("✨ = 自创程序动作；选中动作后点下方按钮导出 MP4")
         form.addRow(hint)
 
-        self.gif_button = QPushButton("导出选中为GIF")
-        self.gif_button.setFixedHeight(24)
-        self.gif_button.setToolTip("把当前选中的动作导出为 GIF（≤1MB）")
-        self.gif_button.clicked.connect(self._export_selected_gif)
-        form.addRow(self.gif_button)
+        self.mp4_button = QPushButton("导出选中为MP4")
+        self.mp4_button.setFixedHeight(24)
+        self.mp4_button.setToolTip("把当前选中的动作导出为方形 MP4（微信视频硬解，丝滑）")
+        self.mp4_button.clicked.connect(self._export_selected_mp4)
+        form.addRow(self.mp4_button)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -167,9 +240,9 @@ class PlayPage(QWidget):
         return value.strip(" .") or "未命名"
 
     # ---- GIF 导出 ----
-    def _export_selected_gif(self):
+    def _export_selected_mp4(self):
         """导出当前选中的动作：选路径 → 逐帧确定性渲染 → 裁剪编码。"""
-        if self._gif_expected:
+        if self._mp4_expected:
             return
         row = self.anim_list.currentRow()
         item = self.anim_list.item(row) if row >= 0 else None
@@ -179,21 +252,21 @@ class PlayPage(QWidget):
         is_proc = display.startswith(_PROC_PREFIX)
         name = display[len(_PROC_PREFIX):] if is_proc else display
 
-        default_name = self._safe_filename(f"{self._model}_{name}") + ".gif"
+        default_name = self._safe_filename(f"{self._model}_{name}") + ".mp4"
         default_path = str(Path.home() / "Downloads" / default_name)
         out, _ = QFileDialog.getSaveFileName(
-            self, "导出为GIF", default_path, "GIF (*.gif)")
+            self, "导出为MP4", default_path, "MP4 (*.mp4)")
         if not out:
             return
-        if not out.lower().endswith(".gif"):
-            out += ".gif"
+        if not out.lower().endswith(".mp4"):
+            out += ".mp4"
 
-        self._gif_name = name
-        self._gif_is_proc = is_proc
-        self._gif_path = out
-        self._gif_frames = []
+        self._mp4_name = name
+        self._mp4_is_proc = is_proc
+        self._mp4_path = out
+        self._mp4_frames = []
         if is_proc:
-            self._begin_gif_capture(_GIF_PROC_SECONDS)
+            self._begin_mp4_capture(_MP4_PROC_SECONDS)
         else:
             self._query_gif_duration(name, out)
 
@@ -214,61 +287,61 @@ class PlayPage(QWidget):
             seconds = float(duration)
         except (TypeError, ValueError):
             seconds = 0.0
-        seconds = min(seconds if seconds > 0 else 1.0, _GIF_MAX_SECONDS)
-        self._begin_gif_capture(seconds)
+        seconds = min(seconds if seconds > 0 else 1.0, _MP4_MAX_SECONDS)
+        self._begin_mp4_capture(seconds)
 
-    def _begin_gif_capture(self, seconds: float):
-        self._gif_expected = max(1, int(round(seconds * _GIF_FPS)))
-        self._set_gif_controls_enabled(False)
-        self._gif_progress = QProgressDialog(
-            f"正在导出 {self._gif_name} …", "取消", 0, self._gif_expected, self)
-        self._gif_progress.setWindowTitle("导出为GIF")
-        self._gif_progress.setMinimumDuration(0)
-        self._gif_progress.canceled.connect(self._cancel_gif_export)
-        self._gif_progress.show()
+    def _begin_mp4_capture(self, seconds: float):
+        self._mp4_expected = max(1, int(round(seconds * _MP4_FPS)))
+        self._set_mp4_controls_enabled(False)
+        self._mp4_progress = QProgressDialog(
+            f"正在导出 {self._mp4_name} …", "取消", 0, self._mp4_expected, self)
+        self._mp4_progress.setWindowTitle("导出为MP4")
+        self._mp4_progress.setMinimumDuration(0)
+        self._mp4_progress.canceled.connect(self._cancel_mp4_export)
+        self._mp4_progress.show()
         QTimer.singleShot(0, self._render_next_gif_frame)
 
     def _render_next_gif_frame(self):
-        if not self._gif_expected:
+        if not self._mp4_expected:
             return
-        t = len(self._gif_frames) / _GIF_FPS
-        if self._gif_is_proc:
-            self.preview.render_pose(proc=self._gif_name, t=t, fps=_GIF_FPS,
+        t = len(self._mp4_frames) / _MP4_FPS
+        if self._mp4_is_proc:
+            self.preview.render_pose(proc=self._mp4_name, t=t, fps=_MP4_FPS,
                                      callback=self._on_gif_frame_rendered)
         else:
-            self.preview.render_pose(animation=self._gif_name, t=t, fps=_GIF_FPS,
+            self.preview.render_pose(animation=self._mp4_name, t=t, fps=_MP4_FPS,
                                      callback=self._on_gif_frame_rendered)
 
     def _on_gif_frame_rendered(self, ok):
         if not ok:
-            self._finish_gif_export(False, "渲染预览帧失败")
+            self._finish_mp4_export(False, "渲染预览帧失败")
             return
         self.preview.grab_canvas_png(self._on_gif_frame_png)
 
     def _on_gif_frame_png(self, data_url):
-        if not self._gif_expected:
+        if not self._mp4_expected:
             return
         if not data_url or "," not in data_url:
-            self._finish_gif_export(False, "从画布读取帧失败（页面未就绪？）")
+            self._finish_mp4_export(False, "从画布读取帧失败（页面未就绪？）")
             return
         try:
             data = base64.b64decode(data_url.split(",", 1)[1])
         except (ValueError, IndexError):
-            self._finish_gif_export(False, "帧数据解码失败")
+            self._finish_mp4_export(False, "帧数据解码失败")
             return
-        self._gif_frames.append(data)
-        if self._gif_progress:
-            self._gif_progress.setValue(len(self._gif_frames))
-        if len(self._gif_frames) >= self._gif_expected:
-            if self._gif_progress:
-                self._gif_progress.setLabelText("裁剪与编码中…")
+        self._mp4_frames.append(data)
+        if self._mp4_progress:
+            self._mp4_progress.setValue(len(self._mp4_frames))
+        if len(self._mp4_frames) >= self._mp4_expected:
+            if self._mp4_progress:
+                self._mp4_progress.setLabelText("裁剪与编码中…")
             QTimer.singleShot(0, self._process_and_encode)
         else:
             QTimer.singleShot(0, self._render_next_gif_frame)
 
-    def _cancel_gif_export(self):
-        self._gif_frames = []
-        self._finish_gif_export(False, "已取消")
+    def _cancel_mp4_export(self):
+        self._mp4_frames = []
+        self._finish_mp4_export(False, "已取消")
 
     # ---- 后处理与编码 ----
     @staticmethod
@@ -288,8 +361,9 @@ class PlayPage(QWidget):
         return minx, miny, maxx + 1, maxy + 1
 
     def _fit_frames_square(self, frames_png: list[bytes]) -> list[bytes]:
-        """微信表情包规格化：按全部帧的 alpha 并集裁出角色（去掉白边/
-        空白），外扩少量余量后居中补成透明正方形，再缩放到 240×240。"""
+        """去白边贴边：按全部帧的 alpha 并集裁出角色，外扩余量后居中
+        补成方形。视频无 alpha，角色合成到白底（聊天场景白底无感），
+        输出 JPEG 帧供 H.264 编码。"""
         imgs = []
         bbox = None
         for data in frames_png:
@@ -309,7 +383,7 @@ class PlayPage(QWidget):
             bbox = (0, 0, imgs[0].width(), imgs[0].height())
         x0, y0, x1, y1 = bbox
         bw, bh = x1 - x0, y1 - y0
-        m = int(max(bw, bh) * _GIF_MARGIN)
+        m = int(max(bw, bh) * _MP4_MARGIN)
         x0 = max(0, x0 - m); y0 = max(0, y0 - m)
         x1 = min(imgs[0].width(), x0 + bw + 2 * m)
         y1 = min(imgs[0].height(), y0 + bh + 2 * m)
@@ -317,86 +391,73 @@ class PlayPage(QWidget):
         side = max(bw, bh)
         out = []
         for img in imgs:
-            canvas = QImage(side, side, QImage.Format.Format_ARGB32)
-            canvas.fill(Qt.GlobalColor.transparent)
+            canvas = QImage(side, side, QImage.Format.Format_RGB32)
+            canvas.fill(QColor("#ffffff"))
             painter = QPainter(canvas)
             painter.drawImage((side - bw) // 2, (side - bh) // 2,
                               img.copy(QRect(x0, y0, bw, bh)))
             painter.end()
-            if side != _GIF_TARGET:
-                canvas = canvas.scaled(
-                    _GIF_TARGET, _GIF_TARGET,
-                    Qt.AspectRatioMode.IgnoreAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation)
             buf = QBuffer()
             buf.open(QIODevice.OpenModeFlag.ReadWrite)
-            canvas.save(buf, "PNG")
+            canvas.save(buf, "JPG", 95)
             out.append(bytes(buf.data()))
         return out
 
-    def _encode_frames(self, frames_png: list[bytes],
-                       colors: int) -> tuple[bool, str]:
-        try:
-            ex = GifExporter(self._gif_path, _GIF_FPS, len(frames_png),
-                             max_side=_GIF_TARGET, colors=colors)
-        except Exception as e:
-            return False, f"编码器启动失败: {e}"
-        for f in frames_png:
-            if not ex.write_png_bytes(f):
-                ex.cancel()
-                return False, ex.error or "写帧失败"
-        return ex.finish()
-
     def _process_and_encode(self):
-        frames = self._fit_frames_square(self._gif_frames)
+        frames = self._fit_frames_square(self._mp4_frames)
         if not frames:
-            self._finish_gif_export(False, "没有可用帧")
+            self._finish_mp4_export(False, "没有可用帧")
             return
-        ok, err = self._encode_frames(frames, 256)
-        for colors in _GIF_FALLBACKS:
-            try:
-                if ok and Path(self._gif_path).stat().st_size <= _GIF_SIZE_LIMIT:
-                    break
-            except OSError:
-                break
-            ok, err = self._encode_frames(frames, colors)
-            if not ok:
-                break
-        self._finish_gif_export(ok, err)
+        try:
+            ex = StickerMp4Exporter(self._mp4_path, _MP4_FPS, len(frames))
+        except ImportError:
+            self._finish_mp4_export(False,
+                                    "缺少 imageio-ffmpeg：pip install imageio-ffmpeg")
+            return
+        except Exception as e:
+            self._finish_mp4_export(False, f"编码器启动失败：{e}")
+            return
+        for f in frames:
+            if not ex.write_jpg_bytes(f):
+                ex.cancel()
+                self._finish_mp4_export(False, ex.error or "写帧失败")
+                return
+        ok, err = ex.finish()
+        self._finish_mp4_export(ok, err)
 
-    def _finish_gif_export(self, ok: bool, error: str):
-        self._gif_expected = 0
-        if self._gif_progress:
-            self._gif_progress.close()
-            self._gif_progress = None
+    def _finish_mp4_export(self, ok: bool, error: str):
+        self._mp4_expected = 0
+        if self._mp4_progress:
+            self._mp4_progress.close()
+            self._mp4_progress = None
 
         # 导出期间把动作推进到了暂停单帧；恢复当前条目为循环播放。
         row = self.anim_list.currentRow()
         if row >= 0 and not self._loading:
             self._on_pick(row)
 
-        self._set_gif_controls_enabled(True)
-        if not self._gif_path:
+        self._set_mp4_controls_enabled(True)
+        if not self._mp4_path:
             return
         if ok:
-            size = Path(self._gif_path).stat().st_size
+            size = Path(self._mp4_path).stat().st_size
             box = QMessageBox(self)
             box.setWindowTitle("导出完成")
-            box.setText(f"GIF 已导出（{_GIF_TARGET}px 方形 · 透明底 · "
-                        f"{size / 1024:.0f} KB）：\n{self._gif_path}")
+            box.setText(f"MP4 已导出（{_MP4_SIDE}px 方形 · 白底 · "
+                        f"{size / 1024:.0f} KB）：\n{self._mp4_path}")
             btn_open = box.addButton("打开所在文件夹", QMessageBox.ButtonRole.AcceptRole)
             box.addButton("好的", QMessageBox.ButtonRole.RejectRole)
             box.exec()
             if box.clickedButton() is btn_open:
                 QDesktopServices.openUrl(QUrl.fromLocalFile(
-                    str(Path(self._gif_path).parent)))
+                    str(Path(self._mp4_path).parent)))
         elif error != "已取消":
-            QMessageBox.warning(self, "导出为GIF", f"导出失败：\n{error}")
+            QMessageBox.warning(self, "导出为MP4", f"导出失败：\n{error}")
 
-    def _set_gif_controls_enabled(self, enabled: bool):
+    def _set_mp4_controls_enabled(self, enabled: bool):
         self.anim_list.setEnabled(enabled)
         self.model_combo.setEnabled(enabled)
-        self.gif_button.setEnabled(enabled)
+        self.mp4_button.setEnabled(enabled)
 
     def _on_pick(self, row: int):
         """列表选择：官方动作直接播；程序动作走叠加层。"""

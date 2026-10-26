@@ -1,6 +1,6 @@
-"""播放页 GIF 导出端到端：大哭打滚（程序动作）+ Sleep（官方动作）。
+"""播放页 MP4 导出端到端：大哭打滚（程序动作）+ Sleep（官方动作）。
 
-验证：GIF 魔数、≤1MB、帧数 ≥10、首末帧有差异（确实在动）。
+验证：H.264、480x480、时长、体积、帧数。
 """
 import os
 import subprocess
@@ -23,7 +23,7 @@ from core.assets import RelayLibrary
 from core.pet_config import PetConfig
 from ui.play_page import PlayPage
 
-TMP = Path = tempfile.mkdtemp(prefix="_giftest_")
+TMP = tempfile.mkdtemp(prefix="_mp4test_")
 
 
 def fail(msg):
@@ -58,6 +58,7 @@ def poll_loaded(cb):
 
 
 state = {"target": None, "results": []}
+from pathlib import Path as _P  # noqa
 
 
 def export_row(row_label, out_name):
@@ -71,13 +72,13 @@ def export_row(row_label, out_name):
     out = os.path.join(TMP, out_name)
     QFileDialog.getSaveFileName = staticmethod(
         lambda *a, **k: (out, "GIF (*.gif)"))
-    page._export_selected_gif()
+    page._export_selected_mp4()
     state["target"] = out
     QTimer.singleShot(1000, lambda: poll_export())
 
 
 def poll_export():
-    if page._gif_expected:
+    if page._mp4_expected:
         QTimer.singleShot(500, poll_export)
         return
     verify(state["target"])
@@ -89,10 +90,8 @@ def verify(out):
     if not p.exists():
         fail(f"GIF 未生成: {out}")
     size = p.stat().st_size
-    head = p.read_bytes()[:6]
-    print(f"导出: {p.name}  {size} bytes  魔数={head!r}")
-    if not head.startswith((b"GIF87a", b"GIF89a")):
-        fail("不是合法 GIF 文件")
+    head = p.read_bytes()[:12]
+    print(f"导出: {p.name}  {size} bytes  头={head[:8]!r}")
     if size > 1_000_000:
         fail(f"超过 1MB: {size}")
     import imageio_ffmpeg
@@ -104,35 +103,26 @@ def verify(out):
     import re
     m = re.findall(r"frame=\s*(\d+)", info)
     frames = int(m[-1]) if m else 0
+    if "h264" not in info and "Video:" not in info:
+        fail("ffprobe 读不到视频流: " + info[:400])
     wh = re.search(r"Video:\s+\S+.*?(\d{2,4})x(\d{2,4})", info)
     dims = wh.groups() if wh else ("?", "?")
     print(f"  尺寸: {dims[0]}x{dims[1]}  帧数: {frames}")
-    if dims != ("240", "240"):
-        fail(f"尺寸不是 240x240: {dims}")
-    if frames < 10:
+    if dims != ("480", "480"):
+        fail(f"尺寸不是 480x480: {dims}")
+    if frames < 20:
         fail(f"帧数太少: {frames}")
-    # 角落实验透明度（表情包规格：透明底）
-    corner = pathlib.Path(TMP) / "_corner.png"
-    subprocess.run([exe, "-y", "-i", str(p), "-vf", "select=eq(n\,0)",
-                    "-frames:v", "1", str(corner)], capture_output=True)
-    if corner.exists():
-        from PySide6.QtGui import QImage
-        img = QImage(str(corner))
-        if not img.isNull():
-            a = img.pixelColor(2, 2).alpha()
-            print(f"  角落 alpha: {a}")
-            if a > 20:
-                fail("角落不透明：透明背景丢失")
+    if "h264" not in info:
+        fail("不是 h264 编码")
     state["results"].append((p.name, size, frames))
-    corner.unlink(missing_ok=True)
     next_step()
 
 
 def next_step():
     if not state["results"]:
-        export_row("✨ 大哭打滚", "proc.gif")
+        export_row("✨ 大哭打滚", "proc.mp4")
     elif len(state["results"]) == 1:
-        export_row("Sleep", "sleep.gif")
+        export_row("Sleep", "sleep.mp4")
     else:
         print("全部 PASS:", state["results"])
         app.exit(0)
