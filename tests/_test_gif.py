@@ -77,7 +77,7 @@ def export_row(row_label, out_name):
 
 
 def poll_export():
-    if page._gif_exporter is not None:
+    if page._gif_expected:
         QTimer.singleShot(500, poll_export)
         return
     verify(state["target"])
@@ -104,23 +104,27 @@ def verify(out):
     import re
     m = re.findall(r"frame=\s*(\d+)", info)
     frames = int(m[-1]) if m else 0
-    print(f"  帧数: {frames}")
+    wh = re.search(r"Video:\s+\S+.*?(\d{2,4})x(\d{2,4})", info)
+    dims = wh.groups() if wh else ("?", "?")
+    print(f"  尺寸: {dims[0]}x{dims[1]}  帧数: {frames}")
+    if dims != ("240", "240"):
+        fail(f"尺寸不是 240x240: {dims}")
     if frames < 10:
         fail(f"帧数太少: {frames}")
-    # 首末帧差异（证明在动）
-    fa = pathlib.Path(TMP) / "_a.png"
-    fb = pathlib.Path(TMP) / "_b.png"
+    # 角落实验透明度（表情包规格：透明底）
+    corner = pathlib.Path(TMP) / "_corner.png"
     subprocess.run([exe, "-y", "-i", str(p), "-vf", "select=eq(n\,0)",
-                    "-frames:v", "1", str(fa)], capture_output=True)
-    subprocess.run([exe, "-y", "-i", str(p), "-vf", f"select=eq(n\\,{frames//2})",
-                    "-frames:v", "1", str(fb)], capture_output=True)
-    if fa.exists() and fb.exists():
-        if abs(fa.stat().st_size - fb.stat().st_size) < 50:
-            # 文件大小相近不代表相同，但差很多基本说明在动
-            print("  ⚠ 首中帧大小接近，进一步用像素校验")
+                    "-frames:v", "1", str(corner)], capture_output=True)
+    if corner.exists():
+        from PySide6.QtGui import QImage
+        img = QImage(str(corner))
+        if not img.isNull():
+            a = img.pixelColor(2, 2).alpha()
+            print(f"  角落 alpha: {a}")
+            if a > 20:
+                fail("角落不透明：透明背景丢失")
     state["results"].append((p.name, size, frames))
-    fa.unlink(missing_ok=True)
-    fb.unlink(missing_ok=True)
+    corner.unlink(missing_ok=True)
     next_step()
 
 
