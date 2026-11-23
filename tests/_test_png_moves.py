@@ -63,7 +63,7 @@ SVG = ('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40">'
 store = WorkspaceStore()
 shutil.rmtree(ROOT / "_pngmovetest", ignore_errors=True)
 proj = store.create("_pngmovetest")
-(store.assets_dir("_pngmovetest") / "dot.png").write_bytes(png_bytes())
+(store.assets_dir("_pngmovetest") / "dot.png").write_bytes(png_bytes(200, 100))
 (store.assets_dir("_pngmovetest") / "vec.svg").write_text(SVG, encoding="utf-8")
 
 img = Clip(id="img", type="png", asset="dot.png", start=0.0, end=5.0,
@@ -92,8 +92,8 @@ queue = list(CASES)
 
 def run_case():
     if not queue:
-        print("PASS：PNG/SVG moves 求值全部符合预期")
-        app.exit(0)
+        print("PNG/SVG moves 求值全部符合预期")
+        QTimer.singleShot(250, check_rotated_hit)
         return
     t, cid, want = queue.pop(0)
     js = (f"(function(){{stageApi.setTime({t});return stageApi.probe();}})()")
@@ -113,6 +113,40 @@ def got(t, cid, want, snap):
     if bad:
         fail(f"t={t} {cid} 求值不对：{'，'.join(bad)}")
     QTimer.singleShot(250, run_case)
+
+
+def check_rotated_hit():
+    js = "(function(){stageApi.setTime(3.5);return stageApi.debugHit(414,304);})()"
+    page.stage.page().runJavaScript(
+        js, lambda s: got_rotated_hit(json.loads(s or "[]")))
+
+
+def got_rotated_hit(result):
+    hits = result[-1].get("hitsAt", []) if result else []
+    print("旋转 PNG 可见边缘命中:", hits)
+    if "img" not in hits:
+        fail("rot=45 的 PNG 可见位置未命中")
+    js = ("(function(){var stage=document.getElementById('stage');"
+          "var r=document.getElementById('overlay').getBoundingClientRect();"
+          "var c=document.getElementById('gl');"
+          "function pt(sx,sy){return [r.left+sx/c.width*r.width,"
+          "                           r.top+sy/c.height*r.height];}"
+          "function ev(t,a){return new MouseEvent(t,{bubbles:true,cancelable:true,button:0,clientX:a[0],clientY:a[1]});}"
+          "stage.dispatchEvent(ev('mousedown',pt(414,304)));"
+          "document.dispatchEvent(ev('mousemove',pt(464,334)));"
+          "document.dispatchEvent(ev('mouseup',pt(464,334)));"
+          "return true;})()")
+    page.stage.page().runJavaScript(js)
+    QTimer.singleShot(500, check_rotated_drag)
+
+
+def check_rotated_drag():
+    move = page._project.clip("img").moves[1]
+    print("旋转 PNG 拖动后的 move 起点:", move.x0, move.y0)
+    if move.x0 < 320 or move.y0 < 220:
+        fail("命中成功但拖动没有落库")
+    print("PASS：PNG/SVG moves + 旋转 PNG 命中拖动")
+    app.exit(0)
 
 
 QTimer.singleShot(3000, run_case)

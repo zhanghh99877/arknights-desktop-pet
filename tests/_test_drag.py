@@ -52,7 +52,7 @@ page.stage.set_time(0)
 sels, moves = [], []
 page.stage.bridge.sigClipSelected.connect(sels.append)
 page.stage.bridge.sigClipMoved.connect(
-    lambda i, x, y, dx, dy: moves.append((i, x, y, dx, dy)))
+    lambda i, x, y, raw: moves.append((i, x, y, json.loads(raw))))
 
 
 def probe(cb):
@@ -84,15 +84,30 @@ def check():
         fail("区间外点选失败（拖动第一关就没过）")
     if not moves:
         fail("拖动未产生 clipMoved")
-    i, x, y, dx, dy = moves[0]
-    if not (dx > 50 and dy < -20):
-        fail(f"拖动增量不对: dx={dx} dy={dy}，期望约 +120,-70")
+    i, x, y, raw_moves = moves[0]
+    if not (x > 700 and y < 570):
+        fail(f"回写位置不对: x={x} y={y}，期望约 760,529")
     c = page._project.clip("sp")
     print("模型基准:", c.x, c.y, "move条目:",
           [(m.x0, m.y0, m.x1, m.y1) for m in c.moves])
     if c.moves and abs(c.moves[0].x0 - 760) > 25:
         fail(f"move 条目没跟手：x0={c.moves[0].x0}，期望约 760")
-    print("PASS：区间外可点选、拖动跟手、增量落库")
+    if not c.moves or abs(raw_moves[0]["x0"] - c.moves[0].x0) > 1e-6:
+        fail("最终 move 条目没有原样写回")
+    print("区间外点选、最终位置与 move 条目原样落库")
+    page._undo_shortcut.activated.emit()
+    QTimer.singleShot(300, check_undo)
+
+
+def check_undo():
+    c = page._project.clip("sp")
+    print("Ctrl+Z 后:", c.x, c.y,
+          [(m.x0, m.y0, m.x1, m.y1) for m in c.moves])
+    if abs(c.x - 640) > 1e-6 or abs(c.y - 600) > 1e-6:
+        fail("撤销没有恢复拖动前的基准位置")
+    if not c.moves or abs(c.moves[0].x0 - 640) > 1e-6:
+        fail("撤销没有恢复拖动前的 move 条目")
+    print("PASS：拖动原样落库 + Ctrl+Z 完整撤销")
     app.exit(0)
 
 

@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QMimeData, QUrl, Signal
-from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtGui import QColor, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
     QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QInputDialog, QLabel,
@@ -273,6 +273,8 @@ class WorkspacePage(QWidget):
         self._preview_time = 0.0
         self._preview_sizes: list[int] = []
         self._loading = False
+        self._undo_stack = []
+        self._undo_doc = None
 
         self._build_ui()
 
@@ -302,6 +304,9 @@ class WorkspacePage(QWidget):
         self._sync_timer.setSingleShot(True)
         self._sync_timer.setInterval(100)
         self._sync_timer.timeout.connect(self._sync_now)
+        self._undo_shortcut = QShortcut(QKeySequence.StandardKey.Undo, self)
+        self._undo_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self._undo_shortcut.activated.connect(self.undo)
 
         self._init_project()
 
@@ -459,7 +464,8 @@ class WorkspacePage(QWidget):
         self._refresh_asset_list()
         self._fill_spine_list()
         self._select("")
-        self._emit_change()
+        self._reset_undo()
+        self._sync_now()
 
     def _refresh_project_combo(self, select: str = ""):
         self._loading = True
@@ -492,7 +498,8 @@ class WorkspacePage(QWidget):
         self._store.set_last(name)
         self._refresh_asset_list()
         self._select("")
-        self._emit_change()
+        self._reset_undo()
+        self._sync_now()
 
     def _on_project_new(self):
         name, ok = QInputDialog.getText(self, "新建项目", "项目名称：")
@@ -507,7 +514,8 @@ class WorkspacePage(QWidget):
         self._refresh_project_combo(select=proj.name)
         self._refresh_asset_list()
         self._select("")
-        self._emit_change()
+        self._reset_undo()
+        self._sync_now()
 
     def _on_save(self):
         if not self._project:
@@ -556,19 +564,45 @@ class WorkspacePage(QWidget):
             btn.setText(c.name())
 
     # ================= 模型同步 =================
+    def _reset_undo(self):
+        self._sync_timer.stop()
+        self._undo_stack.clear()
+        self._undo_doc = self._project.to_dict() if self._project else None
+
     def _emit_change(self):
-        """模型被改 → 防抖同步舞台+时间轴。也会自动延长总时长。"""
+        """模型被改 → 记录一次编辑并防抖同步舞台和时间轴。"""
         if self._loading or not self._project:
             return
         ends = [c.end for c in self._project.clips]
         if ends and max(ends) > self._project.duration:
             self._project.duration = round(max(ends) * 10) / 10
+        current = self._project.to_dict()
+        if not self._sync_timer.isActive() and self._undo_doc is not None \
+                and current != self._undo_doc:
+            self._undo_stack.append(self._undo_doc)
+            del self._undo_stack[:-100]
         self._sync_timer.start()
+
+    def undo(self):
+        if not self._project or not self._undo_stack:
+            return
+        if self._sync_timer.isActive():
+            self._sync_timer.stop()
+            self._sync_now()
+        target = self._undo_stack.pop()
+        self._project = Project.from_dict(target)
+        if self._sel and not self._project.clip(self._sel):
+            self._sel = ""
+        self._sync_now()
+        self._rebuild_props()
+        self.status_label.setText("已撤销")
 
     def _sync_now(self):
         if not self._project:
             return
+        self._sync_timer.stop()
         d = self._project.to_dict()
+        self._undo_doc = d
         assets_base = self._store.assets_dir(self._project.name).resolve().as_uri() + "/"
         # 素材版本 = project.json 的 mtime：重新生成/保存后素材 URL 换版拉新
         try:
@@ -609,17 +643,18 @@ class WorkspacePage(QWidget):
         self._emit_change()
         self._sync_now()   # 立即推给舞台：拖入立刻看到落点（骨架加载有占位提示）
 
-    def _on_stage_moved(self, clip_id: str, x: float, y: float,
-                        ddx: float = 0.0, ddy: float = 0.0):
+    def _on_stage_moved(self, clip_id: str, x: float, y: float, moves_json: str):
         clip = self._project.clip(clip_id) if self._project else None
         if not clip:
             return
+        try:
+            raw_moves = json.loads(moves_json)
+            moves = [MoveEntry(**{k: float(v) for k, v in m.items()})
+                     for m in raw_moves]
+        except (ValueError, TypeError):
+            return
         clip.x, clip.y = x, y
-        if clip.moves and (ddx or ddy):
-            # 拖动时活动的平移条目在 JS 侧已跟手，这里把增量落到模型
-            for m in clip.moves:
-                m.x0 += ddx; m.x1 += ddx
-                m.y0 += ddy; m.y1 += ddy
+        clip.moves = moves
         self._emit_change()
         self._rebuild_props()   # 基准位置变了，刷新右栏
 

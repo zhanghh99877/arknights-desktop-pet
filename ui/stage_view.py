@@ -78,7 +78,7 @@ class StageBridge(QObject):
     sigReady = Signal()
     sigLog = Signal(str)
     sigClipSelected = Signal(str)          # '' = 点了空白
-    sigClipMoved = Signal(str, float, float, float, float)  # id,x,y,dx,dy
+    sigClipMoved = Signal(str, float, float, str)  # id,x,y,最终move条目JSON
     sigTime = Signal(float)
     sigExportFrame = Signal(str, int)      # JPEG base64、帧序号
     sigAssetDropped = Signal(str, str, float, float)  # kind, name, x, y（舞台坐标）
@@ -95,10 +95,9 @@ class StageBridge(QObject):
     def clipSelected(self, clip_id: str):
         self.sigClipSelected.emit(clip_id)
 
-    @Slot(str, float, float, float, float)
-    def clipMoved(self, clip_id: str, x: float, y: float,
-                  ddx: float, ddy: float):
-        self.sigClipMoved.emit(clip_id, x, y, ddx, ddy)
+    @Slot(str, float, float, str)
+    def clipMoved(self, clip_id: str, x: float, y: float, moves_json: str):
+        self.sigClipMoved.emit(clip_id, x, y, moves_json)
 
     @Slot(float)
     def timeUpdate(self, t: float):

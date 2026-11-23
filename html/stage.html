@@ -19,6 +19,8 @@
   .ov { position: absolute; transform-origin: center center; cursor: move; }
   .ov img { pointer-events: none; user-select: none; -webkit-user-drag: none; display: block; }
   .ov svg { display: block; overflow: visible; }
+  /* 帧裁剪片段（SVG 根带 data-frame-clip）：外框=裁剪窗口，内容在框内平移 */
+  .ov-frame { overflow: hidden; }
 </style>
 </head>
 <body>

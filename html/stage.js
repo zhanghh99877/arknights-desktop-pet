@@ -247,9 +247,22 @@ function OvActor(clip, assetsBase) {
     this.el = el;
     var wrap = document.createElement('div');
     el.appendChild(wrap);
+    this.inner = wrap;
+    var self = this;
     fetch(url)
       .then(function (r) { return r.text(); })
-      .then(function (txt) { wrap.innerHTML = txt; })
+      .then(function (txt) {
+        wrap.innerHTML = txt;
+        // 帧裁剪片段：SVG 根声明 data-frame-clip → 外框当裁剪窗口，
+        // moves 平移改落到内层内容（跑马灯/弹幕/遮罩滑出框即被裁）
+        try {
+          var svg = wrap.querySelector('svg');
+          if (svg && svg.dataset && svg.dataset.frameClip) {
+            self.frameClip = true;
+            el.classList.add('ov-frame');
+          }
+        } catch (e) {}
+      })
       .catch(function (e) { log('SVG 加载失败 ' + clip.asset + ': ' + e); });
     host.appendChild(el);
   }
@@ -323,7 +336,7 @@ function evalSpineActor(a, t, H) {
       targetAnim = (base && sk.data.findAnimation(base)) ? base : '';
     }
     if (a.curAnim !== ae.anim) {
-      if (window.__clearFx) window.__clearFx();
+      if (window.__clearFx) window.__clearFx(c.id);
       try {
         if (targetAnim) a.state.setAnimation(0, targetAnim, true);
         else if (sk.data.findAnimation(ae.anim)) a.state.setAnimation(0, ae.anim, true);
@@ -364,6 +377,8 @@ function evalSpineActor(a, t, H) {
   sk.x += twx - root.worldX;
   sk.y += twy - root.worldY;
   sk.updateWorldTransform();
+  // fx 位置结算必须在锚定之后（否则拿到的是骨架局部坐标，见 procFx 注释）
+  if (isProc) window.__flushFx();
   // 缓存本轮包围盒（世界坐标，含旋转）：给点选命中用
   var off = evalSpineActor._off || (evalSpineActor._off = new spine.Vector2());
   var size = evalSpineActor._sz || (evalSpineActor._sz = new spine.Vector2());
@@ -396,10 +411,23 @@ function evalOvActor(a, t, ghost) {
   var mv = evalMove(c, t);
   var el = a.el;
   el.style.display = 'block';
-  el.style.left = mv.x + 'px';
-  el.style.top = mv.y + 'px';
   el.style.opacity = clamp01(c.opacity == null ? 1 : c.opacity) *
     (ghost ? 0.55 : 1);
+  if (a.frameClip) {
+    // 帧裁剪片段：外框钉在基准位、只随 moves 旋转；moves 的平移落到
+    // 内层内容上，滑出外框的部分被 overflow:hidden 裁掉
+    el.style.left = c.x + 'px';
+    el.style.top = c.y + 'px';
+    el.style.transform = 'translate(-50%,-50%) rotate(' + mv.rot + 'deg)';
+    if (a.inner) {
+      a.inner.style.transform =
+        'translate(' + (mv.x - c.x) + 'px,' + (mv.y - c.y) + 'px)';
+    }
+    el.__lastRect = el.getBoundingClientRect();
+    return;
+  }
+  el.style.left = mv.x + 'px';
+  el.style.top = mv.y + 'px';
   el.style.transform = 'translate(-50%,-50%) rotate(' + mv.rot +
     'deg) scale(' + (c.scale || 1) + ')';
   el.__lastRect = el.getBoundingClientRect();  // 供时间窗外点选命中
@@ -494,7 +522,7 @@ function renderNow() {
     }
     if (!layerVisible(c.layer)) {
       if (a.el) a.el.style.display = 'none';
-      if (window.__fxOwner === c.id && window.__clearFx) window.__clearFx();
+      if (window.__fxOwner === c.id && window.__clearFx) window.__clearFx(c.id);
       continue;
     }
     if (!a.ready) {
@@ -502,7 +530,7 @@ function renderNow() {
       continue;
     }
     if (time < c.start || time >= c.end) {
-      if (window.__fxOwner === c.id && window.__clearFx) window.__clearFx();
+      if (window.__fxOwner === c.id && window.__clearFx) window.__clearFx(c.id);
       // 拖时间窗外的 spine：画半透明 ghost，让拖动有视觉反馈
       if (drag && drag.id === c.id) {
         var gt = Math.max(c.start, Math.min(time, c.end - 1e-3));
@@ -666,6 +694,28 @@ function captureFrame() {
           xml + '</div>');
       } catch (e) { log('SVG 序列化失败: ' + e); }
     }
+    // 程序动作 fx（散装 emoji div，无 clipId）：一并进合成，否则导出丢 fx
+    var fxIds = window.__fxIds || [];
+    for (i = 0; i < fxIds.length; i++) {
+      var fel = document.getElementById(fxIds[i]);
+      if (!fel || fel.style.display === 'none' ||
+          fel.parentNode !== container) continue;
+      try {
+        var fr = fel.getBoundingClientRect();
+        var fclone = fel.cloneNode(true);
+        inlineStyles(fel, fclone);
+        fclone.style.position = 'absolute';
+        fclone.style.left = '0px';
+        fclone.style.top = '0px';
+        fclone.style.margin = '0px';
+        fclone.style.transform = 'none';
+        var fxml = new XMLSerializer().serializeToString(fclone);
+        parts.push('<div xmlns="http://www.w3.org/1999/xhtml" style="position:absolute;left:' +
+          ((fr.left - rect.left) * k) + 'px;top:' + ((fr.top - rect.top) * k) +
+          'px;width:' + (fr.width * k) + 'px;height:' + (fr.height * k) +
+          'px;">' + fxml + '</div>');
+      } catch (e) {}
+    }
     if (!parts.length) { cb(null); return; }
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H +
       '"><foreignObject width="100%" height="100%">' + parts.join('') +
@@ -725,36 +775,59 @@ function layerVisible(idx) {
 window.PROCS = {};
 window.__fxOwner = null;
 
-/* 特效叠加层：骨世界坐标 + 像素偏移 → 屏幕定位（emoji 挂在 #overlay 里） */
+/* 特效叠加层：pose 阶段只「注册」（骨架此时还没做根骨骼锚定，读世界坐标
+ * 会差一个片段偏移——导出/抓帧的首帧尤其如此，live 靠逐帧自愈掩盖）；
+ * 骨架锚定完成后由 __flushFx 统一结算位置。宿主容器按 __fxOwner 的
+ * 顶层世界归属选（负图层人物 → #overlayTop），proc 文件里的 topFx
+ * 再挂载自然变成无害空操作。 */
 window.procFx = function (id, bone, dxPx, dyPx, opacity, emoji) {
-  var el = document.getElementById(id);
-  if (opacity <= 0) { if (el) el.style.display = 'none'; return; }
-  if (!bone || !model) return;
-  var W = glState.w, H = glState.h;
-  if (!el) {
-    el = document.createElement('div');
-    el.id = id;
-    el.style.cssText = 'position:absolute;font-size:26px;pointer-events:none;display:none;z-index:5;transform:translate(-50%,-50%);';
-    overlay.appendChild(el);
-    window.__fxIds = window.__fxIds || [];
-    window.__fxIds.push(id);
-  }
-  // 世界 → 舞台逻辑像素（y 翻转）
-  el.textContent = emoji;
-  el.style.left = bone.worldX + 'px';
-  el.style.top = (H - bone.worldY) + 'px';
-  el.style.marginLeft = dxPx + 'px';
-  el.style.marginTop = dyPx + 'px';
-  el.style.opacity = opacity;
-  el.style.display = 'block';
+  if (!window.__pendingFx) window.__pendingFx = [];
+  window.__pendingFx.push({ id: id, bone: bone, dx: dxPx, dy: dyPx,
+    op: opacity, emoji: emoji });
 };
-window.__clearFx = function () {
+window.__flushFx = function () {
+  var pend = window.__pendingFx || [];
+  window.__pendingFx = [];
+  if (!pend.length || !model) return;
+  var H = glState.h;
+  var owner = actors[window.__fxOwner];
+  var host = owner && owner.top ? overlayTop : overlay;
+  window.__fxIds = window.__fxIds || [];
+  pend.forEach(function (f) {
+    var el = document.getElementById(f.id);
+    if (f.op <= 0) { if (el) el.style.display = 'none'; return; }
+    if (!f.bone) return;
+    if (!el) {
+      el = document.createElement('div');
+      el.id = f.id;
+      el.style.cssText = 'position:absolute;font-size:26px;pointer-events:none;display:none;z-index:5;transform:translate(-50%,-50%);';
+      host.appendChild(el);
+      window.__fxIds.push(f.id);
+    } else if (el.parentNode !== host) {
+      host.appendChild(el);
+    }
+    el.dataset.fxOwner = window.__fxOwner || '';
+    // 世界 → 舞台逻辑像素（y 翻转）；bone.worldX 已含锚定后的片段偏移
+    el.textContent = f.emoji;
+    el.style.left = f.bone.worldX + 'px';
+    el.style.top = (H - f.bone.worldY) + 'px';
+    el.style.marginLeft = f.dx + 'px';
+    el.style.marginTop = f.dy + 'px';
+    el.style.opacity = f.op;
+    el.style.display = 'block';
+  });
+};
+window.__clearFx = function (owner) {
+  // 按属主清理：fx 归创建它的角色（dataset.fxOwner）。全局清空会在
+  // 双人同帧切换动作时把别人的 fx 一起抹掉（导出首帧无人自愈）。
+  var keep = [];
   (window.__fxIds || []).forEach(function (id) {
     var el = document.getElementById(id);
+    if (el && owner && el.dataset.fxOwner !== owner) { keep.push(id); return; }
     if (el) el.remove();
   });
-  window.__fxIds = [];
-  window.__fxOwner = null;
+  window.__fxIds = keep;
+  if (!owner && window.__pendingFx) window.__pendingFx.length = 0;
 };
 
 function clipById(id) {
@@ -792,10 +865,10 @@ function hitsAt(p) {
     if (!layerVisible(pc.layer)) continue;
     var pw = pa.natW * (pc.scale || 1), phh = pa.natH * (pc.scale || 1);
     var mv = evalMove(pc, time);   // 命中跟随 move 后的实际位置
-    var pth = -(mv.rot) * Math.PI / 180;
+    var pth = mv.rot * Math.PI / 180;
     var pdx = p.x - mv.x, pdy = p.y - mv.y;
-    var plx = pdx * Math.cos(-pth) - pdy * Math.sin(-pth);
-    var ply = pdx * Math.sin(-pth) + pdy * Math.cos(-pth);
+    var plx = pdx * Math.cos(pth) + pdy * Math.sin(pth);
+    var ply = -pdx * Math.sin(pth) + pdy * Math.cos(pth);
     if (Math.abs(plx) <= pw / 2 + 12 && Math.abs(ply) <= phh / 2 + 12) {
       hits.push(pc.id);
     }
@@ -896,9 +969,7 @@ document.addEventListener('mouseup', function () {
   if (d.moved) {
     var c = clipById(d.id);
     if (c) {
-      bcall('clipMoved', d.id, c.x, c.y,
-            Math.round((c.x - d.x0) * 10) / 10,
-            Math.round((c.y - d.y0) * 10) / 10);
+      bcall('clipMoved', d.id, c.x, c.y, JSON.stringify(c.moves || []));
     }
   } else {
     // 单击（未拖动）：在同一位置的堆叠命中里循环推进选择，
